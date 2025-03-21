@@ -11,7 +11,11 @@ import warnings
 from pathlib import Path
 import json
 import sys
+import PyPDF2
+import pdfplumber
+import pytesseract
 
+"""""
 # Optional dependencies - import with try/except
 try:
     import PyPDF2
@@ -35,7 +39,7 @@ try:
 except ImportError:
     PDFPLUMBER_SUPPORT = False
     print("pdfplumber not found. Advanced PDF parsing disabled.")
-
+"""
 # For a complete implementation, you'd also want to add:
 # - pdfplumber or pdfminer for better PDF text extraction
 # - python-docx for Word documents
