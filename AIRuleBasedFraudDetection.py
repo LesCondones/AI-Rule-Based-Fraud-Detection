@@ -28,12 +28,13 @@ except ImportError:
     OCR_SUPPORT = False
     print("Tesseract OCR dependencies not found. Image support disabled.")
 
-try: 
-    import pdfplumber  # For more advanced PDF processing
+# Check for pdfplumber
+try:
+    import pdfplumber
     PDFPLUMBER_SUPPORT = True
 except ImportError:
     PDFPLUMBER_SUPPORT = False
-    print("pdfplumber not found. Advanced PDF processing disabled.")
+    print("pdfplumber not found. Advanced PDF parsing disabled.")
 
 # For a complete implementation, you'd also want to add:
 # - pdfplumber or pdfminer for better PDF text extraction
@@ -60,7 +61,7 @@ class AIDocumentProcessor:
         }
 
         # Common bank statement patterns
-       # Update the statement_patterns dictionary
+        # Update the statement_patterns dictionary
         self.statement_patterns = {
             'account_info': re.compile(r'(account\s*number|acct\s*#|account\s*#|Account Holder)[:.\s]*([^$\n]+)', re.IGNORECASE),
             'date_range': re.compile(r'(statement\s*period|from|statement\s*dates|Account Statement)[:.\s]*([^-]+)\s*-\s*([^$\n]+)', re.IGNORECASE),
@@ -153,218 +154,215 @@ class AIDocumentProcessor:
         except Exception as e:
             raise ValueError(f"Error processing Excel file: {str(e)}")
     
- # The problem is with the process_pdf method at line 174
-# Here's the fixed version with proper indentation
-
-def process_pdf(self, file_path: str) -> Dict:
-    """Process a PDF file and extract transaction data."""
-    if not PDF_SUPPORT:
-        raise ImportError("PDF support requires PyPDF2. Please install it with 'pip install PyPDF2'")
+    def process_pdf(self, file_path: str) -> Dict:
+        """Process a PDF file and extract transaction data."""
+        if not PDF_SUPPORT:
+            raise ImportError("PDF support requires PyPDF2. Please install it with 'pip install PyPDF2'")
+                
+        try:
+            # Try pdfplumber first (if available) for better table extraction
+            if PDFPLUMBER_SUPPORT:
+                try:
+                    with pdfplumber.open(file_path) as pdf:
+                        tables = []
+                        for page in pdf.pages:
+                            extracted_tables = page.extract_tables()
+                            if extracted_tables:
+                                tables.extend(extracted_tables)
+                        
+                        if tables:
+                            # Process extracted tables from pdfplumber
+                            return self._process_pdfplumber_tables(tables)
+                except Exception as e:
+                    print(f"pdfplumber processing failed, falling back to PyPDF2: {str(e)}")
             
-    try:
-        # Try pdfplumber first (if available) for better table extraction
-        if PDFPLUMBER_SUPPORT:
-            try:
-                with pdfplumber.open(file_path) as pdf:
-                    tables = []
-                    for page in pdf.pages:
-                        extracted_tables = page.extract_tables()
-                        if extracted_tables:
-                            tables.extend(extracted_tables)
-                    
-                    if tables:
-                        # Process extracted tables from pdfplumber
-                        return self._process_pdfplumber_tables(tables)
-            except Exception as e:
-                print(f"pdfplumber processing failed, falling back to PyPDF2: {str(e)}")
-        
-        # Fall back to PyPDF2 approach
-        extracted_text = ""
-        table_data = []
-        
-        # Extract text from PDF
-        with open(file_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
+            # Fall back to PyPDF2 approach
+            extracted_text = ""
+            table_data = []
             
-            # Process each page
-            for page_num in range(len(pdf_reader.pages)):
-                page = pdf_reader.pages[page_num]
-                page_text = page.extract_text()
-                extracted_text += page_text + "\n"
+            # Extract text from PDF
+            with open(file_path, 'rb') as file:
+                pdf_reader = PyPDF2.PdfReader(file)
                 
-                # Look for tabular data with improved pattern matching
-                lines = page_text.split('\n')
-                for line in lines:
-                    # Update pattern to match YYYY-MM-DD format dates
-                    if re.search(r'(2024-\d{2}-\d{2})', line) and re.search(r'[-+]?\$?\d+\.\d{2}', line):
-                        # Correctly parse the bank statement format
-                        parts = self._parse_bank_statement_line(line)
-                        if parts:
-                            table_data.append(parts)
-        
-        # Create structured data from extracted text
-        if not table_data:
-            # If table extraction failed, try specialized extraction
-            return self._extract_bank_statement_structure(extracted_text)
-        
-        # Process the extracted table data
-        return self._process_extracted_table_data(table_data, extracted_text)
-                
-    except Exception as e:
-        raise ValueError(f"Error processing PDF file: {str(e)}")
-
-def _process_pdfplumber_tables(self, tables):
-    """Process tables extracted by pdfplumber."""
-    transactions = []
-    headers = []
-    
-    # Identify headers from the first table
-    if tables and tables[0]:
-        potential_headers = tables[0][0]
-        # Clean and normalize headers
-        headers = [
-            str(header).strip().lower() 
-            for header in potential_headers if header is not None
-        ]
-        
-        # Process each table row as a transaction
-        for table in tables:
-            for row_idx, row in enumerate(table):
-                # Skip the header row
-                if row_idx == 0 and table == tables[0]:
-                    continue
+                # Process each page
+                for page_num in range(len(pdf_reader.pages)):
+                    page = pdf_reader.pages[page_num]
+                    page_text = page.extract_text()
+                    extracted_text += page_text + "\n"
                     
-                # Skip empty rows
-                if not any(cell for cell in row):
-                    continue
+                    # Look for tabular data with improved pattern matching
+                    lines = page_text.split('\n')
+                    for line in lines:
+                        # Update pattern to match YYYY-MM-DD format dates
+                        if re.search(r'(2024-\d{2}-\d{2})', line) and re.search(r'[-+]?\$?\d+\.\d{2}', line):
+                            # Correctly parse the bank statement format
+                            parts = self._parse_bank_statement_line(line)
+                            if parts:
+                                table_data.append(parts)
+            
+            # Create structured data from extracted text
+            if not table_data:
+                # If table extraction failed, try specialized extraction
+                return self._extract_bank_statement_structure(extracted_text)
+            
+            # Process the extracted table data
+            return self._process_extracted_table_data(table_data, extracted_text)
                     
-                # Create transaction dictionary
-                transaction = {}
-                for col_idx, value in enumerate(row):
-                    if col_idx < len(headers) and value is not None:
-                        # Clean the value
-                        clean_value = str(value).strip()
-                        if clean_value:
-                            transaction[headers[col_idx]] = clean_value
-                
-                # Only add non-empty transactions
-                if transaction:
-                    transactions.append(transaction)
-    
-    return {
-        'data': transactions,
-        'headers': headers,
-        'format': 'pdf',
-    }
+        except Exception as e:
+            raise ValueError(f"Error processing PDF file: {str(e)}")
 
-def _parse_bank_statement_line(self, line):
-    """Parse a transaction line from the bank statement format."""
-    # Match the format: 2024-MM-DD DESCRIPTION Category Amount Balance
-    match = re.match(r'(2024-\d{2}-\d{2})\s+(.*?)\s+([A-Za-z &]+)\s+([-+]?\$?\d+\.\d{2})\s+(\$?\d+\.\d{2})', line)
-    if match:
+    def _process_pdfplumber_tables(self, tables):
+        """Process tables extracted by pdfplumber."""
+        transactions = []
+        headers = []
+        
+        # Identify headers from the first table
+        if tables and tables[0]:
+            potential_headers = tables[0][0]
+            # Clean and normalize headers
+            headers = [
+                str(header).strip().lower() 
+                for header in potential_headers if header is not None
+            ]
+            
+            # Process each table row as a transaction
+            for table in tables:
+                for row_idx, row in enumerate(table):
+                    # Skip the header row
+                    if row_idx == 0 and table == tables[0]:
+                        continue
+                        
+                    # Skip empty rows
+                    if not any(cell for cell in row):
+                        continue
+                        
+                    # Create transaction dictionary
+                    transaction = {}
+                    for col_idx, value in enumerate(row):
+                        if col_idx < len(headers) and value is not None:
+                            # Clean the value
+                            clean_value = str(value).strip()
+                            if clean_value:
+                                transaction[headers[col_idx]] = clean_value
+                    
+                    # Only add non-empty transactions
+                    if transaction:
+                        transactions.append(transaction)
+        
         return {
-            'date': match.group(1),
-            'description': match.group(2).strip(),
-            'category': match.group(3).strip(),
-            'amount': match.group(4),
-            'balance': match.group(5)
+            'data': transactions,
+            'headers': headers,
+            'format': 'pdf',
         }
-    return None
 
-def _extract_bank_statement_structure(self, text):
-    """Extract structured data from the bank statement text."""
-    # Get header info
-    statement_match = re.search(r'Account Statement: (.*)', text)
-    statement_period = statement_match.group(1) if statement_match else ''
-    
-    account_holder_match = re.search(r'Account Holder: (.*)', text)
-    account_holder = account_holder_match.group(1) if account_holder_match else ''
-    
-    # Extract transactions using date pattern as separators
-    transactions = []
-    date_pattern = re.compile(r'(2024-\d{2}-\d{2})')
-    
-    # Find all potential transaction blocks
-    lines = text.split('\n')
-    for line in lines:
-        if date_pattern.search(line):
-            # Specialized parsing for bank statement format
-            parts = self._parse_bank_statement_line(line)
-            if parts:
-                transactions.append(parts)
-    
-    return {
-        'data': transactions,
-        'headers': ['date', 'description', 'category', 'amount', 'balance'],
-        'format': 'pdf',
-        'metadata': {
-            'statement_period': statement_period,
-            'account_holder': account_holder
-        }
-    }
+    def _parse_bank_statement_line(self, line):
+        """Parse a transaction line from the bank statement format."""
+        # Match the format: 2024-MM-DD DESCRIPTION Category Amount Balance
+        match = re.match(r'(2024-\d{2}-\d{2})\s+(.*?)\s+([A-Za-z &]+)\s+([-+]?\$?\d+\.\d{2})\s+(\$?\d+\.\d{2})', line)
+        if match:
+            return {
+                'date': match.group(1),
+                'description': match.group(2).strip(),
+                'category': match.group(3).strip(),
+                'amount': match.group(4),
+                'balance': match.group(5)
+            }
+        return None
 
-def _process_extracted_table_data(self, table_data, extracted_text):
-    """Process the extracted table data with additional context."""
-    # Get header information
-    statement_match = re.search(r'Account Statement: (.*)', extracted_text)
-    statement_period = statement_match.group(1) if statement_match else ''
-    
-    account_holder_match = re.search(r'Account Holder: (.*)', extracted_text)
-    account_holder = account_holder_match.group(1) if account_holder_match else ''
-    
-    # Determine headers from the data structure
-    headers = []
-    if table_data and isinstance(table_data[0], dict):
-        headers = list(table_data[0].keys())
-    
-    return {
-        'data': table_data,
-        'headers': headers,
-        'format': 'pdf',
-        'metadata': {
-            'statement_period': statement_period,
-            'account_holder': account_holder
-        }
-    }
-       
-    def extract_transactions_from_pdf(self, text: str, table_data: List[List[str]]) -> List[Dict]:
-        """Extract transactions from PDF text using patterns."""
-    transactions = []
-    
-    # Try to identify statement header information
-    account_match = self.statement_patterns['account_info'].search(text)
-    account_number = account_match.group(2) if account_match else 'Unknown'
-    
-    # Update pattern to match "March 1, 2024 - May 31, 2024" format
-    date_range_match = re.search(r'Account Statement:\s*(.*?)\s*-\s*(.*)', text)
-    statement_period = f"{date_range_match.group(1)} to {date_range_match.group(2)}" if date_range_match else ''
-    
-    # First try to use detected table data
-    if table_data:
-        for row in table_data:
-            if isinstance(row, dict):
-                # Already parsed structured data
-                transactions.append(row)
-            else:
-                # Process as array data
-                process_row_data(row)
-    else:
-        # Updated regex pattern for the date format in example (YYYY-MM-DD)
-        date_pattern = re.compile(r'(2024-\d{2}-\d{2})')
-        amount_pattern = re.compile(r'([-+]?\$?\d{1,3}(,\d{3})*\.\d{2})')
+    def _extract_bank_statement_structure(self, text):
+        """Extract structured data from the bank statement text."""
+        # Get header info
+        statement_match = re.search(r'Account Statement: (.*)', text)
+        statement_period = statement_match.group(1) if statement_match else ''
         
+        account_holder_match = re.search(r'Account Holder: (.*)', text)
+        account_holder = account_holder_match.group(1) if account_holder_match else ''
+        
+        # Extract transactions using date pattern as separators
+        transactions = []
+        date_pattern = re.compile(r'(2024-\d{2}-\d{2})')
+        
+        # Find all potential transaction blocks
         lines = text.split('\n')
         for line in lines:
-            date_match = date_pattern.search(line)
-            if date_match:
-                # Process transaction line with specialized parsing
-                parsed = self._parse_bank_statement_line(line)
-                if parsed:
-                    parsed['account_number'] = account_number
-                    parsed['statement_period'] = statement_period
-                    transactions.append(parsed)
-    
-    return transactions
+            if date_pattern.search(line):
+                # Specialized parsing for bank statement format
+                parts = self._parse_bank_statement_line(line)
+                if parts:
+                    transactions.append(parts)
+        
+        return {
+            'data': transactions,
+            'headers': ['date', 'description', 'category', 'amount', 'balance'],
+            'format': 'pdf',
+            'metadata': {
+                'statement_period': statement_period,
+                'account_holder': account_holder
+            }
+        }
+
+    def _process_extracted_table_data(self, table_data, extracted_text):
+        """Process the extracted table data with additional context."""
+        # Get header information
+        statement_match = re.search(r'Account Statement: (.*)', extracted_text)
+        statement_period = statement_match.group(1) if statement_match else ''
+        
+        account_holder_match = re.search(r'Account Holder: (.*)', extracted_text)
+        account_holder = account_holder_match.group(1) if account_holder_match else ''
+        
+        # Determine headers from the data structure
+        headers = []
+        if table_data and isinstance(table_data[0], dict):
+            headers = list(table_data[0].keys())
+        
+        return {
+            'data': table_data,
+            'headers': headers,
+            'format': 'pdf',
+            'metadata': {
+                'statement_period': statement_period,
+                'account_holder': account_holder
+            }
+        }
+           
+    def extract_transactions_from_pdf(self, text: str, table_data: List[List[str]]) -> List[Dict]:
+        """Extract transactions from PDF text using patterns."""
+        transactions = []
+        
+        # Try to identify statement header information
+        account_match = self.statement_patterns['account_info'].search(text)
+        account_number = account_match.group(2) if account_match else 'Unknown'
+        
+        # Update pattern to match "March 1, 2024 - May 31, 2024" format
+        date_range_match = re.search(r'Account Statement:\s*(.*?)\s*-\s*(.*)', text)
+        statement_period = f"{date_range_match.group(1)} to {date_range_match.group(2)}" if date_range_match else ''
+        
+        # First try to use detected table data
+        if table_data:
+            for row in table_data:
+                if isinstance(row, dict):
+                    # Already parsed structured data
+                    transactions.append(row)
+                else:
+                    # Process as array data
+                    process_row_data(row)
+        else:
+            # Updated regex pattern for the date format in example (YYYY-MM-DD)
+            date_pattern = re.compile(r'(2024-\d{2}-\d{2})')
+            amount_pattern = re.compile(r'([-+]?\$?\d{1,3}(,\d{3})*\.\d{2})')
+            
+            lines = text.split('\n')
+            for line in lines:
+                date_match = date_pattern.search(line)
+                if date_match:
+                    # Process transaction line with specialized parsing
+                    parsed = self._parse_bank_statement_line(line)
+                    if parsed:
+                        parsed['account_number'] = account_number
+                        parsed['statement_period'] = statement_period
+                        transactions.append(parsed)
+        
+        return transactions
     
     def guess_table_headers(self, first_row: List[str]) -> List[str]:
         """Try to determine what each column represents."""
@@ -1530,10 +1528,6 @@ class FraudDetectionApp:
             plt.savefig('transaction_time_series.png', dpi=300, bbox_inches='tight')
             print("Saved time series visualization to: transaction_time_series.png")
             plt.show()
-
-    def some_function(self, tables):
-        # Your logic here
-        return self._process_pdfplumber_tables(tables)
 
 
 def main():
