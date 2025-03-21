@@ -153,8 +153,11 @@ class AIDocumentProcessor:
         except Exception as e:
             raise ValueError(f"Error processing Excel file: {str(e)}")
     
-    def process_pdf(self, file_path: str) -> Dict:
-        """Process a PDF file and extract transaction data."""
+ # The problem is with the process_pdf method at line 174
+# Here's the fixed version with proper indentation
+
+def process_pdf(self, file_path: str) -> Dict:
+    """Process a PDF file and extract transaction data."""
     if not PDF_SUPPORT:
         raise ImportError("PDF support requires PyPDF2. Please install it with 'pip install PyPDF2'")
             
@@ -268,8 +271,8 @@ def _parse_bank_statement_line(self, line):
         }
     return None
 
-    def _extract_bank_statement_structure(self, text):
-        """Extract structured data from the bank statement text."""
+def _extract_bank_statement_structure(self, text):
+    """Extract structured data from the bank statement text."""
     # Get header info
     statement_match = re.search(r'Account Statement: (.*)', text)
     statement_period = statement_match.group(1) if statement_match else ''
@@ -300,8 +303,8 @@ def _parse_bank_statement_line(self, line):
         }
     }
 
-    def _process_extracted_table_data(self, table_data, extracted_text):
-        """Process the extracted table data with additional context."""
+def _process_extracted_table_data(self, table_data, extracted_text):
+    """Process the extracted table data with additional context."""
     # Get header information
     statement_match = re.search(r'Account Statement: (.*)', extracted_text)
     statement_period = statement_match.group(1) if statement_match else ''
@@ -323,7 +326,7 @@ def _parse_bank_statement_line(self, line):
             'account_holder': account_holder
         }
     }
-
+       
     def extract_transactions_from_pdf(self, text: str, table_data: List[List[str]]) -> List[Dict]:
         """Extract transactions from PDF text using patterns."""
     transactions = []
@@ -362,8 +365,6 @@ def _parse_bank_statement_line(self, line):
                     transactions.append(parsed)
     
     return transactions
-        
-        return transactions
     
     def guess_table_headers(self, first_row: List[str]) -> List[str]:
         """Try to determine what each column represents."""
@@ -1529,6 +1530,10 @@ class FraudDetectionApp:
             plt.savefig('transaction_time_series.png', dpi=300, bbox_inches='tight')
             print("Saved time series visualization to: transaction_time_series.png")
             plt.show()
+
+    def some_function(self, tables):
+        # Your logic here
+        return self._process_pdfplumber_tables(tables)
 
 
 def main():
