@@ -171,7 +171,13 @@ class AIDocumentProcessor:
                             parts = re.split(r'\s{2,}', line)  # Split by multiple spaces
                             if len(parts) >= 3:  # Likely a table row
                                 table_data.append(parts)
-            
+            #Create structured data from extracted text
+            if not table_data:
+                # If table extraction failed, try specialized extraction
+                return self._process_extracted_table_data(table_data, extracted_text)
+
+        except Exception as e:
+            raise ValueError(f"Error reading PDF file: {str(e)}")
             # Extract transaction data
             transactions = self.extract_transactions_from_pdf(extracted_text, table_data)
             
@@ -190,7 +196,39 @@ class AIDocumentProcessor:
                 
         except Exception as e:
             raise ValueError(f"Error processing PDF file: {str(e)}")
-    
+
+    def _extract_bank_statement_structure(self, text):
+        """Extract Structured data from the bank statement text"""
+        # Get header info
+        statement_match = re.search(r'Account Statement: (.*)', text)
+        statement_period = statement_match.group(1) if statement_match else ''
+
+        account_holder_match = re.search(r'Account Holder: (.*)', text)
+        account_holder = account_holder_match.group(1) if account_holder_match else ''
+
+        #Extract transactions using date pattern as separators
+        transactions = []
+        date_pattern = re.compiler(r'(2024-\d{2}-\d{2})')  # Example date pattern YYYY-MM-DD
+
+        #Find all potential transaction blocks
+        lines = text.split('\n')
+        for line in lines:
+            if date_pattern.search(line):
+                # Specialized parsing for bank format
+                parts = self._parse_bank_statement_line(line)
+                if parts:
+                    transactions.append(parts)
+
+        return {
+            'data': transactions,
+            'headers': ['date', 'description', 'amount', 'balance'],
+            'format': 'pdf',
+            'metadata': {
+                'statement_period': statement_period,
+                'account_holder': account_holder
+            }
+        }
+
     def extract_transactions_from_pdf(self, text: str, table_data: List[List[str]]) -> List[Dict]:
         """Extract transactions from PDF text using patterns."""
         transactions = []
