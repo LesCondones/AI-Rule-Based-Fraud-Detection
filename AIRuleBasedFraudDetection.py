@@ -154,7 +154,7 @@ class AIDocumentProcessor:
             raise ValueError(f"Error processing Excel file: {str(e)}")
     
     def process_pdf(self, file_path: str) -> Dict:
-    """Process a PDF file and extract transaction data."""
+        """Process a PDF file and extract transaction data."""
     if not PDF_SUPPORT:
         raise ImportError("PDF support requires PyPDF2. Please install it with 'pip install PyPDF2'")
             
@@ -269,7 +269,7 @@ def _parse_bank_statement_line(self, line):
     return None
 
     def _extract_bank_statement_structure(self, text):
-    """Extract structured data from the bank statement text."""
+        """Extract structured data from the bank statement text."""
     # Get header info
     statement_match = re.search(r'Account Statement: (.*)', text)
     statement_period = statement_match.group(1) if statement_match else ''
@@ -301,7 +301,7 @@ def _parse_bank_statement_line(self, line):
     }
 
     def _process_extracted_table_data(self, table_data, extracted_text):
-    """Process the extracted table data with additional context."""
+        """Process the extracted table data with additional context."""
     # Get header information
     statement_match = re.search(r'Account Statement: (.*)', extracted_text)
     statement_period = statement_match.group(1) if statement_match else ''
@@ -325,7 +325,7 @@ def _parse_bank_statement_line(self, line):
     }
 
     def extract_transactions_from_pdf(self, text: str, table_data: List[List[str]]) -> List[Dict]:
-    """Extract transactions from PDF text using patterns."""
+        """Extract transactions from PDF text using patterns."""
     transactions = []
     
     # Try to identify statement header information
