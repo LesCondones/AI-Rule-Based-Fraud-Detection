@@ -1,3 +1,25 @@
+"""
+
+
+Author: Lester L. Artis Jr.
+Created: 03/16/2025
+
+
+
+"""
+# AI-Enhanced Bank Statement Fraud Detection Web Application
+# This Flask web application allows users to upload bank statements in various formats (CSV, Excel, PDF, images)
+# and performs AI-enhanced fraud detection analysis on the transactions within those statements.
+# This file is part of the AI-Enhanced Bank Statement Fraud Detection project.
+# It provides a Flask web application for uploading bank statements,
+# processing them with AI for fraud detection, and displaying the results.
+# and insights in a user-friendly format.
+# This code uses Flask for the web framework, pandas for data manipulation,
+# and matplotlib for visualizations.
+# It implements a simple AI-enhanced bank statement fraud detection system.
+# The application allows users to upload bank statements in various formats,
+# processes the documents to extract transaction data, and analyzes the data for potential fraud.
+
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, send_file
 import os
 import io
