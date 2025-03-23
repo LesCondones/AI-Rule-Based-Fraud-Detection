@@ -3,7 +3,7 @@ Enhanced Bank Statement Fraud Detection System
 with improved file type handling and parsing capabilities
 
 Author: Lester L. Artis Jr. 
-Modified: March 23, 2025
+Created: March 15, 2025
 """
 
 import os
