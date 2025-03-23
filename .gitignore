@@ -33,3 +33,11 @@ results/
 build/
 dist/
 *.egg-info/
+.dockerignore
+Bank Transaction Data.pdf.backup
+sample-bank-statement.pdf.backup
+run-docker.sh
+requirements-docker.txt
+examplebankstatement.pdf.backup
+Dockerfile
+docker-compose.yml

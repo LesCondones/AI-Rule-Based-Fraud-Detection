@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Enhanced Bank Statement Fraud Detection</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <style>
+        .fraud-high {
+            background-color: #ffdddd;
+        }
+        .fraud-medium {
+            background-color: #ffffdd;
+        }
+        .fraud-low {
+            background-color: #ddffdd;
+        }
+        .drag-area {
+            border: 2px dashed #ccc;
+            border-radius: 5px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .drag-area.active {
+            border-color: #0d6efd;
+            background-color: #faf8f8;
+        }
+        .ai-badge {
+            background-color: #8c43ff;
+        }
+        .processing-step {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-left: 3px solid #0d6efd;
+            background-color: #f8f9fa;
+        }
+        .detected-field {
+            background-color: #e8f4ff;
+            border-radius: 3px;
+            padding: 2px 5px;
+            margin: 2px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <h3>AI-Enhanced Bank Statement Fraud Detection</h3>
+                        <span class="badge ai-badge">AI Powered</span>
+                    </div>
+                    <div class="card-body">
+                        {% with messages = get_flashed_messages() %}
+                            {% if messages %}
+                                {% for message in messages %}
+                                    <div class="alert alert-warning">{{ message }}</div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+                        
+                        <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
+                            <div class="drag-area" id="dropArea">
+                                <h5>Drag & Drop any bank document here</h5>
+                                <p class="text-muted">Accepts CSV, Excel, PDF, Images of statements</p>
+                                <button type="button" class="btn btn-primary" id="browseBtn">Browse Files</button>
+                                <input type="file" id="fileInput" name="file" accept=".csv,.xlsx,.xls,.pdf,.jpg,.jpeg,.png" hidden>
+                                <div id="filePreview" class="mt-3" style="display: none;">
+                                    <div class="alert alert-info d-flex align-items-center">
+                                        <div>Selected file: <span id="fileName"></span></div>
+                                        <button type="button" class="btn-close ms-auto" aria-label="Clear" id="clearFile"></button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="largeAmountThreshold" class="form-label">Large Amount Threshold</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" id="largeAmountThreshold" name="largeAmountThreshold" value="2000">
+                                    </div>
+                                    <small class="form-text text-muted">Transactions above this amount will be flagged</small>
+                                </div>
+                            </div>
+                            
+                            <div class="text-center">
+                                <button type="submit" class="btn btn-success btn-lg" id="submitBtn" disabled>
+                                    Analyze Document with AI
+                                </button>
+                            </div>
+                        </form>
+                        
+                        <div class="mt-5">
+                            <h4>How it works</h4>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="card h-100">
+                                        <div class="card-body text-center">
+                                            <h5 class="card-title">1. Document Processing</h5>
+                                            <p class="card-text">AI analyzes your document structure and extracts transaction data, regardless of format</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card h-100">
+                                        <div class="card-body text-center">
+                                            <h5 class="card-title">2. AI-Enhanced Detection</h5>
+                                            <p class="card-text">Advanced algorithms identify suspicious patterns and potential fraud indicators</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card h-100">
+                                        <div class="card-body text-center">
+                                            <h5 class="card-title">3. Detailed Analysis</h5>
+                                            <p class="card-text">Get insights, visualizations, and explanations of detected fraud patterns</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const dropArea = document.getElementById('dropArea');
+            const fileInput = document.getElementById('fileInput');
+            const browseBtn = document.getElementById('browseBtn');
+            const submitBtn = document.getElementById('submitBtn');
+            const filePreview = document.getElementById('filePreview');
+            const fileName = document.getElementById('fileName');
+            const clearFile = document.getElementById('clearFile');
+            
+            // Browse button click
+            browseBtn.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            // File input change
+            fileInput.addEventListener('change', function() {
+                if (this.files.length > 0) {
+                    updateFilePreview(this.files[0]);
+                }
+            });
+            
+            // Clear file selection
+            clearFile.addEventListener('click', function(e) {
+                e.stopPropagation();
+                fileInput.value = '';
+                filePreview.style.display = 'none';
+                submitBtn.disabled = true;
+            });
+            
+            // Drag and drop functionality
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropArea.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, unhighlight, false);
+            });
+            
+            function highlight() {
+                dropArea.classList.add('active');
+            }
+            
+            function unhighlight() {
+                dropArea.classList.remove('active');
+            }
+            
+            dropArea.addEventListener('drop', function(e) {
+                const dt = e.dataTransfer;
+                const file = dt.files[0];
+                fileInput.files = dt.files;
+                updateFilePreview(file);
+            });
+            
+            function updateFilePreview(file) {
+                fileName.textContent = file.name;
+                filePreview.style.display = 'block';
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
