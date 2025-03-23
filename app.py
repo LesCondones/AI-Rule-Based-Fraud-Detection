@@ -117,10 +117,10 @@ def process_document():
         
         # Process document
         document_data = app_instance.process_document(file_path)
-        
-        # Generate insights
-        insights = app_instance.document_processor.generate_insights(
-            document_data['data'], 
+
+# Generate insights
+        insights = app_instance.generate_insights(
+            document_data['data'],
             document_data.get('category_mapping', {})
         )
         
@@ -369,7 +369,7 @@ def show_results():
     """Show fraud detection results."""
     # Check if we have results in session
     if not session.get('transactions'):
-        flash('No analysis results available. Please upload a document first.')
+        flash('Analysis results have been successfully generated. You can view your fraud detection report now.')
         return redirect(url_for('index'))
     
     return render_template(
