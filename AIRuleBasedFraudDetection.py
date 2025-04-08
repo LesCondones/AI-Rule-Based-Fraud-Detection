@@ -10,7 +10,6 @@ Created: 03/16/2025
 =======
 Author: Lester L. Artis Jr. 
 Created: March 15, 2025
->>>>>>> c70ba7da (update)
 """
 
 import os
@@ -4020,9 +4019,4 @@ def run_validation_tests():
 
 
 if __name__ == "__main__":
-    # Check if running in test mode
-    if len(sys.argv) > 1 and sys.argv[1] == '--test':
-        success = run_validation_tests()
-        sys.exit(0 if success else 1)
-    else:
-        sys.exit(main())
+    sys.exit(main())
