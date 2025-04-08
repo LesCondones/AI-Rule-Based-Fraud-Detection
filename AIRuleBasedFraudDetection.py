@@ -2,14 +2,7 @@
 
 <<<<<<< HEAD
 
-Author: Lester L. Artis Jr.
-Created: 03/16/2025
-
-
-
-=======
 Author: Lester L. Artis Jr. 
-Created: March 15, 2025
 """
 
 import os
