@@ -41,3 +41,4 @@ requirements-docker.txt
 examplebankstatement.pdf.backup
 Dockerfile
 docker-compose.yml
+
