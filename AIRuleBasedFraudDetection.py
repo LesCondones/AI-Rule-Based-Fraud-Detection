@@ -705,7 +705,7 @@ class AIDocumentProcessor:
                     # Clean date format if needed
                     if 'Date' in row_data and re.match(r'^\d{4}-\d{2}-$', row_data['Date']):
                         # Look for the rest of the date in the Description
-                        if 'Description' in row_data and row_data['Description'].startswith('\d{2}'):
+                        if 'Description' in row_data and re.match(r'^\d{2}', row_data['Description']):
                             match = re.match(r'^(\d{2})\s*(.*)', row_data['Description'])
                             if match:
                                 row_data['Date'] += match.group(1)
@@ -2373,6 +2373,1272 @@ class AIDocumentProcessor:
         return False
 
 
+class FeatureEngineering:
+    """
+    Advanced feature engineering layer for fraud detection.
+    Creates statistical, behavioral, and temporal features from transaction data.
+    """
+    
+    def __init__(self):
+        """Initialize feature engineering components."""
+        self.feature_cache = {}
+        
+    def extract_features(self, transactions_df: pd.DataFrame, user_profile: Dict = None) -> pd.DataFrame:
+        """
+        Extract comprehensive features from transaction data.
+        
+        Args:
+            transactions_df: DataFrame with transaction data
+            user_profile: Optional user profile for personalized features
+            
+        Returns:
+            DataFrame with engineered features
+        """
+        df = transactions_df.copy()
+        
+        # Ensure required columns exist
+        required_cols = ['amount', 'timestamp', 'description']
+        for col in required_cols:
+            if col not in df.columns:
+                df[col] = 0 if col == 'amount' else ''
+        
+        # Convert timestamp to datetime if needed
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        
+        # Statistical features
+        df = self._add_statistical_features(df)
+        
+        # Temporal features
+        df = self._add_temporal_features(df)
+        
+        # Behavioral features
+        df = self._add_behavioral_features(df)
+        
+        # Frequency features
+        df = self._add_frequency_features(df)
+        
+        # Amount patterns
+        df = self._add_amount_patterns(df)
+        
+        # Description features
+        df = self._add_description_features(df)
+        
+        # Sequential features
+        df = self._add_sequential_features(df)
+        
+        # User profile features
+        if user_profile:
+            df = self._add_profile_features(df, user_profile)
+            
+        return df
+    
+    def _add_statistical_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add statistical features based on amount distributions."""
+        # Rolling statistics
+        df['amount_rolling_mean_7'] = df['amount'].rolling(window=7, min_periods=1).mean()
+        df['amount_rolling_std_7'] = df['amount'].rolling(window=7, min_periods=1).std().fillna(0)
+        df['amount_rolling_mean_30'] = df['amount'].rolling(window=30, min_periods=1).mean()
+        df['amount_rolling_std_30'] = df['amount'].rolling(window=30, min_periods=1).std().fillna(0)
+        
+        # Z-scores
+        global_mean = df['amount'].mean()
+        global_std = df['amount'].std()
+        if global_std > 0:
+            df['amount_zscore'] = (df['amount'] - global_mean) / global_std
+        else:
+            df['amount_zscore'] = 0
+            
+        # Percentiles
+        df['amount_percentile'] = df['amount'].rank(pct=True)
+        
+        # Deviation from rolling mean
+        df['amount_deviation_7'] = abs(df['amount'] - df['amount_rolling_mean_7'])
+        df['amount_deviation_30'] = abs(df['amount'] - df['amount_rolling_mean_30'])
+        
+        return df
+    
+    def _add_temporal_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add temporal features from timestamps."""
+        if 'timestamp' in df.columns and df['timestamp'].notna().any():
+            df['hour'] = df['timestamp'].dt.hour
+            df['day_of_week'] = df['timestamp'].dt.dayofweek
+            df['day_of_month'] = df['timestamp'].dt.day
+            df['month'] = df['timestamp'].dt.month
+            df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
+            df['is_business_hours'] = ((df['hour'] >= 9) & (df['hour'] <= 17)).astype(int)
+            df['is_night'] = ((df['hour'] >= 22) | (df['hour'] <= 6)).astype(int)
+            df['is_early_morning'] = ((df['hour'] >= 2) & (df['hour'] <= 5)).astype(int)
+        else:
+            # Default values if timestamp is not available
+            df['hour'] = 12
+            df['day_of_week'] = 0
+            df['day_of_month'] = 1
+            df['month'] = 1
+            df['is_weekend'] = 0
+            df['is_business_hours'] = 1
+            df['is_night'] = 0
+            df['is_early_morning'] = 0
+            
+        return df
+    
+    def _add_behavioral_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add behavioral pattern features."""
+        # Transaction velocity (time between transactions)
+        if 'timestamp' in df.columns and df['timestamp'].notna().any():
+            df['time_since_last'] = df['timestamp'].diff().dt.total_seconds() / 3600  # hours
+            df['time_since_last'] = df['time_since_last'].fillna(24)  # Default 24 hours for first transaction
+        else:
+            df['time_since_last'] = 24
+            
+        # Amount patterns
+        df['is_round_amount'] = (df['amount'] % 1 == 0).astype(int)
+        df['is_very_round'] = (df['amount'] % 100 == 0).astype(int)
+        
+        # Cumulative features
+        df['cumulative_amount'] = df['amount'].cumsum()
+        df['transaction_sequence'] = range(len(df))
+        
+        return df
+    
+    def _add_frequency_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add frequency-based features."""
+        # Daily transaction count
+        if 'timestamp' in df.columns and df['timestamp'].notna().any():
+            df['date'] = df['timestamp'].dt.date
+            daily_counts = df.groupby('date').size()
+            df['daily_transaction_count'] = df['date'].map(daily_counts)
+            
+            # Hourly transaction count
+            hourly_counts = df.groupby('hour').size()
+            df['hourly_transaction_count'] = df['hour'].map(hourly_counts)
+        else:
+            df['daily_transaction_count'] = 1
+            df['hourly_transaction_count'] = 1
+            
+        return df
+    
+    def _add_amount_patterns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add amount pattern features."""
+        # Amount buckets
+        df['amount_bucket'] = pd.cut(df['amount'], 
+                                   bins=[0, 50, 200, 1000, 5000, float('inf')], 
+                                   labels=['small', 'medium', 'large', 'very_large', 'extreme'])
+        
+        # Amount ratio to recent average
+        df['amount_ratio_to_recent'] = df['amount'] / df['amount_rolling_mean_7']
+        df['amount_ratio_to_recent'] = df['amount_ratio_to_recent'].fillna(1)
+        
+        # Consecutive similar amounts
+        df['amount_rounded'] = df['amount'].round(-1)  # Round to nearest 10
+        df['consecutive_similar'] = (df['amount_rounded'] == df['amount_rounded'].shift()).astype(int)
+        
+        return df
+    
+    def _add_description_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add features based on transaction descriptions."""
+        if 'description' in df.columns:
+            # Description length
+            df['description_length'] = df['description'].astype(str).str.len()
+            
+            # Common merchant categories
+            merchant_keywords = {
+                'grocery': ['grocery', 'market', 'food', 'supermarket'],
+                'gas': ['gas', 'fuel', 'petrol', 'shell', 'exxon', 'bp'],
+                'restaurant': ['restaurant', 'cafe', 'diner', 'pizza', 'mcdonalds'],
+                'retail': ['walmart', 'target', 'amazon', 'store', 'shop'],
+                'atm': ['atm', 'withdrawal', 'cash'],
+                'online': ['paypal', 'venmo', 'zelle', 'online', 'web']
+            }
+            
+            desc_lower = df['description'].astype(str).str.lower()
+            for category, keywords in merchant_keywords.items():
+                pattern = '|'.join(keywords)
+                df[f'is_{category}'] = desc_lower.str.contains(pattern, na=False).astype(int)
+        else:
+            df['description_length'] = 0
+            merchant_categories = ['grocery', 'gas', 'restaurant', 'retail', 'atm', 'online']
+            for category in merchant_categories:
+                df[f'is_{category}'] = 0
+                
+        return df
+    
+    def _add_sequential_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add sequential pattern features."""
+        # Amount change from previous transaction
+        df['amount_change'] = df['amount'].diff().fillna(0)
+        df['amount_change_pct'] = df['amount'].pct_change().fillna(0)
+        
+        # Transaction pattern breaks
+        df['pattern_break'] = 0
+        if len(df) > 3:
+            # Look for sudden changes in transaction patterns
+            rolling_mean = df['amount'].rolling(window=3).mean()
+            rolling_std = df['amount'].rolling(window=3).std()
+            
+            # Flag transactions that are more than 2 std deviations from recent pattern
+            df['pattern_break'] = (
+                (abs(df['amount'] - rolling_mean) > 2 * rolling_std) & 
+                (rolling_std > 0)
+            ).astype(int)
+            
+        return df
+    
+    def _add_profile_features(self, df: pd.DataFrame, user_profile: Dict) -> pd.DataFrame:
+        """Add user profile-based features."""
+        # Profile-based thresholds
+        large_threshold = user_profile.get('large_amount_threshold', 1000)
+        df['exceeds_profile_threshold'] = (df['amount'] > large_threshold).astype(int)
+        
+        # Usual transaction patterns
+        usual_hours = user_profile.get('usual_hours', list(range(9, 18)))
+        df['outside_usual_hours'] = (~df['hour'].isin(usual_hours)).astype(int)
+        
+        # Average transaction amount
+        avg_amount = user_profile.get('average_amount', df['amount'].mean())
+        df['deviation_from_avg'] = abs(df['amount'] - avg_amount) / avg_amount if avg_amount > 0 else 0
+        
+        return df
+    
+    def get_feature_importance(self, df: pd.DataFrame) -> Dict[str, float]:
+        """
+        Calculate feature importance based on variance and correlation with amount.
+        """
+        numeric_features = df.select_dtypes(include=[np.number]).columns
+        importance = {}
+        
+        for feature in numeric_features:
+            if feature != 'amount' and df[feature].var() > 0:
+                # Simple importance based on correlation with amount and variance
+                corr_with_amount = abs(df[feature].corr(df['amount'])) if 'amount' in df.columns else 0
+                variance_score = df[feature].var() / (df[feature].var() + 1)  # Normalized variance
+                importance[feature] = corr_with_amount * variance_score
+                
+        return importance
+
+
+# Try to import scikit-learn for ML models
+try:
+    from sklearn.ensemble import IsolationForest
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import classification_report, roc_auc_score
+    SKLEARN_SUPPORT = True
+except ImportError:
+    SKLEARN_SUPPORT = False
+    print("scikit-learn not found. ML anomaly detection disabled.")
+
+# Try to import TensorFlow for deep learning models
+try:
+    import tensorflow as tf
+    from tensorflow import keras
+    from tensorflow.keras import layers
+    TENSORFLOW_SUPPORT = True
+except ImportError:
+    TENSORFLOW_SUPPORT = False
+    print("TensorFlow not found. Deep learning anomaly detection disabled.")
+
+# Try to import NetworkX for graph analysis
+try:
+    import networkx as nx
+    NETWORKX_SUPPORT = True
+except ImportError:
+    NETWORKX_SUPPORT = False
+    print("NetworkX not found. Graph-based anomaly detection disabled.")
+
+
+class IsolationForestDetector:
+    """
+    Isolation Forest-based anomaly detector for fraud detection.
+    Uses unsupervised learning to identify outliers in transaction patterns.
+    """
+    
+    def __init__(self, contamination=0.1, random_state=42):
+        """
+        Initialize Isolation Forest detector.
+        
+        Args:
+            contamination: Expected proportion of outliers (fraud rate)
+            random_state: Random seed for reproducibility
+        """
+        if not SKLEARN_SUPPORT:
+            raise ImportError("scikit-learn is required for IsolationForestDetector")
+            
+        self.contamination = contamination
+        self.random_state = random_state
+        self.model = None
+        self.scaler = StandardScaler()
+        self.feature_columns = None
+        self.is_trained = False
+        
+    def prepare_features(self, df: pd.DataFrame) -> np.ndarray:
+        """
+        Prepare features for Isolation Forest training/prediction.
+        
+        Args:
+            df: DataFrame with engineered features
+            
+        Returns:
+            Normalized feature array
+        """
+        # Select numerical features for anomaly detection
+        numerical_features = [
+            'amount', 'amount_zscore', 'amount_percentile', 'amount_deviation_7',
+            'amount_deviation_30', 'hour', 'day_of_week', 'is_weekend',
+            'is_business_hours', 'is_night', 'time_since_last', 'is_round_amount',
+            'daily_transaction_count', 'amount_ratio_to_recent', 'amount_change',
+            'amount_change_pct', 'pattern_break', 'description_length'
+        ]
+        
+        # Add merchant category features
+        merchant_features = ['is_grocery', 'is_gas', 'is_restaurant', 'is_retail', 'is_atm', 'is_online']
+        numerical_features.extend(merchant_features)
+        
+        # Select only features that exist in the dataframe
+        available_features = [f for f in numerical_features if f in df.columns]
+        
+        if not available_features:
+            # Fallback to basic features
+            available_features = ['amount'] if 'amount' in df.columns else []
+            
+        if not available_features:
+            raise ValueError("No suitable features found for anomaly detection")
+            
+        self.feature_columns = available_features
+        feature_data = df[available_features].fillna(0)
+        
+        # Replace infinity values with finite values
+        feature_data = feature_data.replace([np.inf, -np.inf], np.nan).fillna(0)
+        
+        return feature_data.values
+    
+    def train(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Train the Isolation Forest model.
+        
+        Args:
+            df: DataFrame with engineered features
+            
+        Returns:
+            Training results and metrics
+        """
+        # Prepare features
+        X = self.prepare_features(df)
+        
+        # Fit scaler
+        X_scaled = self.scaler.fit_transform(X)
+        
+        # Initialize and train Isolation Forest
+        self.model = IsolationForest(
+            contamination=self.contamination,
+            random_state=self.random_state,
+            n_estimators=100,
+            max_samples='auto',
+            max_features=1.0,
+            bootstrap=False,
+            n_jobs=-1
+        )
+        
+        # Train the model
+        self.model.fit(X_scaled)
+        self.is_trained = True
+        
+        # Get anomaly scores for training data
+        anomaly_scores = self.model.decision_function(X_scaled)
+        predictions = self.model.predict(X_scaled)
+        
+        # Calculate metrics
+        n_anomalies = np.sum(predictions == -1)
+        anomaly_rate = n_anomalies / len(predictions)
+        
+        results = {
+            'n_samples': len(X),
+            'n_features': X.shape[1],
+            'n_anomalies': n_anomalies,
+            'anomaly_rate': anomaly_rate,
+            'feature_columns': self.feature_columns,
+            'mean_anomaly_score': np.mean(anomaly_scores),
+            'std_anomaly_score': np.std(anomaly_scores)
+        }
+        
+        return results
+    
+    def predict(self, df: pd.DataFrame) -> Dict[str, np.ndarray]:
+        """
+        Predict anomalies for new data.
+        
+        Args:
+            df: DataFrame with engineered features
+            
+        Returns:
+            Dictionary with predictions and scores
+        """
+        if not self.is_trained:
+            raise ValueError("Model must be trained before making predictions")
+            
+        # Prepare features
+        X = self.prepare_features(df)
+        X_scaled = self.scaler.transform(X)
+        
+        # Make predictions
+        predictions = self.model.predict(X_scaled)  # -1 for anomaly, 1 for normal
+        anomaly_scores = self.model.decision_function(X_scaled)  # Lower scores = more anomalous
+        
+        # Convert to probability-like scores (0-1, higher = more anomalous)
+        # Isolation Forest gives negative scores for anomalies
+        # We'll normalize to 0-1 scale where 1 = most anomalous
+        min_score = np.min(anomaly_scores)
+        max_score = np.max(anomaly_scores)
+        if max_score != min_score:
+            normalized_scores = 1 - (anomaly_scores - min_score) / (max_score - min_score)
+        else:
+            normalized_scores = np.zeros_like(anomaly_scores)
+            
+        return {
+            'predictions': predictions,
+            'anomaly_scores': anomaly_scores,
+            'normalized_scores': normalized_scores,
+            'is_anomaly': predictions == -1
+        }
+    
+    def get_feature_importance(self) -> Dict[str, float]:
+        """
+        Get approximate feature importance for Isolation Forest.
+        Since Isolation Forest doesn't provide direct feature importance,
+        we use a simple heuristic based on feature variance.
+        """
+        if not self.is_trained or self.feature_columns is None:
+            return {}
+            
+        # This is a simplified importance measure
+        # In practice, you might want to use permutation importance
+        importance = {}
+        for i, feature in enumerate(self.feature_columns):
+            # Use random splitting depth as proxy for importance
+            importance[feature] = 1.0 / (i + 1)  # Simple decreasing importance
+            
+        return importance
+
+
+class AutoencoderDetector:
+    """
+    Autoencoder-based anomaly detector for fraud detection.
+    Uses deep learning to learn normal transaction patterns and detect anomalies.
+    """
+    
+    def __init__(self, encoding_dim=10, epochs=50, batch_size=32, validation_split=0.2):
+        """
+        Initialize Autoencoder detector.
+        
+        Args:
+            encoding_dim: Dimension of the encoded representation
+            epochs: Training epochs
+            batch_size: Training batch size
+            validation_split: Fraction of data for validation
+        """
+        if not TENSORFLOW_SUPPORT:
+            raise ImportError("TensorFlow is required for AutoencoderDetector")
+            
+        self.encoding_dim = encoding_dim
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.validation_split = validation_split
+        
+        self.model = None
+        self.scaler = StandardScaler()
+        self.feature_columns = None
+        self.is_trained = False
+        self.threshold = None
+        
+    def build_model(self, input_dim: int):
+        """
+        Build autoencoder model architecture.
+        
+        Args:
+            input_dim: Number of input features
+            
+        Returns:
+            Compiled autoencoder model
+        """
+        if not TENSORFLOW_SUPPORT:
+            raise ImportError("TensorFlow is required for deep learning models")
+            
+        # Encoder
+        input_layer = keras.Input(shape=(input_dim,))
+        encoded = layers.Dense(64, activation='relu')(input_layer)
+        encoded = layers.Dense(32, activation='relu')(encoded)
+        encoded = layers.Dense(self.encoding_dim, activation='relu')(encoded)
+        
+        # Decoder
+        decoded = layers.Dense(32, activation='relu')(encoded)
+        decoded = layers.Dense(64, activation='relu')(decoded)
+        decoded = layers.Dense(input_dim, activation='linear')(decoded)
+        
+        # Autoencoder model
+        autoencoder = keras.Model(input_layer, decoded)
+        autoencoder.compile(optimizer='adam', loss='mse', metrics=['mae'])
+        
+        return autoencoder
+    
+    def prepare_features(self, df: pd.DataFrame) -> np.ndarray:
+        """
+        Prepare features for autoencoder training/prediction.
+        
+        Args:
+            df: DataFrame with engineered features
+            
+        Returns:
+            Normalized feature array
+        """
+        # Select numerical features for anomaly detection
+        numerical_features = [
+            'amount', 'amount_zscore', 'amount_percentile', 'amount_deviation_7',
+            'amount_deviation_30', 'hour', 'day_of_week', 'is_weekend',
+            'is_business_hours', 'is_night', 'time_since_last', 'is_round_amount',
+            'daily_transaction_count', 'amount_ratio_to_recent', 'amount_change',
+            'amount_change_pct', 'pattern_break', 'description_length'
+        ]
+        
+        # Add merchant category features
+        merchant_features = ['is_grocery', 'is_gas', 'is_restaurant', 'is_retail', 'is_atm', 'is_online']
+        numerical_features.extend(merchant_features)
+        
+        # Select only features that exist in the dataframe
+        available_features = [f for f in numerical_features if f in df.columns]
+        
+        if not available_features:
+            # Fallback to basic features
+            available_features = ['amount'] if 'amount' in df.columns else []
+            
+        if not available_features:
+            raise ValueError("No suitable features found for anomaly detection")
+            
+        self.feature_columns = available_features
+        feature_data = df[available_features].fillna(0)
+        
+        # Replace infinity values with finite values
+        feature_data = feature_data.replace([np.inf, -np.inf], np.nan).fillna(0)
+        
+        return feature_data.values
+    
+    def train(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Train the autoencoder model.
+        
+        Args:
+            df: DataFrame with engineered features
+            
+        Returns:
+            Training results and metrics
+        """
+        # Prepare features
+        X = self.prepare_features(df)
+        
+        # Fit scaler and transform data
+        X_scaled = self.scaler.fit_transform(X)
+        
+        # Build model
+        self.model = self.build_model(X_scaled.shape[1])
+        
+        # Train the model
+        history = self.model.fit(
+            X_scaled, X_scaled,
+            epochs=self.epochs,
+            batch_size=self.batch_size,
+            validation_split=self.validation_split,
+            verbose=0,
+            shuffle=True
+        )
+        
+        self.is_trained = True
+        
+        # Calculate reconstruction errors for threshold determination
+        reconstructions = self.model.predict(X_scaled, verbose=0)
+        reconstruction_errors = np.mean(np.square(X_scaled - reconstructions), axis=1)
+        
+        # Set threshold as 95th percentile of reconstruction errors
+        self.threshold = np.percentile(reconstruction_errors, 95)
+        
+        results = {
+            'n_samples': len(X),
+            'n_features': X.shape[1],
+            'feature_columns': self.feature_columns,
+            'final_loss': history.history['loss'][-1],
+            'final_val_loss': history.history['val_loss'][-1] if 'val_loss' in history.history else None,
+            'threshold': self.threshold,
+            'mean_reconstruction_error': np.mean(reconstruction_errors),
+            'std_reconstruction_error': np.std(reconstruction_errors)
+        }
+        
+        return results
+    
+    def predict(self, df: pd.DataFrame) -> Dict[str, np.ndarray]:
+        """
+        Predict anomalies for new data.
+        
+        Args:
+            df: DataFrame with engineered features
+            
+        Returns:
+            Dictionary with predictions and scores
+        """
+        if not self.is_trained:
+            raise ValueError("Model must be trained before making predictions")
+            
+        # Prepare features
+        X = self.prepare_features(df)
+        X_scaled = self.scaler.transform(X)
+        
+        # Get reconstructions
+        reconstructions = self.model.predict(X_scaled, verbose=0)
+        
+        # Calculate reconstruction errors
+        reconstruction_errors = np.mean(np.square(X_scaled - reconstructions), axis=1)
+        
+        # Determine anomalies based on threshold
+        is_anomaly = reconstruction_errors > self.threshold
+        
+        # Normalize scores to 0-1 scale
+        max_error = np.max(reconstruction_errors)
+        if max_error > 0:
+            normalized_scores = reconstruction_errors / max_error
+        else:
+            normalized_scores = np.zeros_like(reconstruction_errors)
+            
+        return {
+            'reconstruction_errors': reconstruction_errors,
+            'normalized_scores': normalized_scores,
+            'is_anomaly': is_anomaly,
+            'predictions': is_anomaly.astype(int)
+        }
+
+
+class RiskEnsemble:
+    """
+    Risk ensemble that combines outputs from multiple fraud detection methods:
+    - Rule-based detection
+    - Isolation Forest
+    - Autoencoder
+    - Optional graph-based detection
+    """
+    
+    def __init__(self, weights=None, combination_method='weighted_average'):
+        """
+        Initialize risk ensemble.
+        
+        Args:
+            weights: Dictionary of weights for each detector type
+            combination_method: Method to combine scores ('weighted_average', 'max', 'voting')
+        """
+        self.weights = weights or {
+            'rules': 0.4,
+            'isolation_forest': 0.3,
+            'autoencoder': 0.3,
+            'graph': 0.0  # Default to 0 if not available
+        }
+        self.combination_method = combination_method
+        self.detectors = {}
+        self.feature_engineering = None
+        
+    def add_detector(self, name: str, detector):
+        """Add a detector to the ensemble."""
+        self.detectors[name] = detector
+        
+    def set_feature_engineering(self, feature_engineering: FeatureEngineering):
+        """Set the feature engineering component."""
+        self.feature_engineering = feature_engineering
+        
+    def train_ml_detectors(self, df: pd.DataFrame, user_profile: Dict = None) -> Dict[str, Any]:
+        """
+        Train all ML-based detectors in the ensemble.
+        
+        Args:
+            df: Training data DataFrame
+            user_profile: Optional user profile for feature engineering
+            
+        Returns:
+            Training results for all detectors
+        """
+        results = {}
+        
+        # Apply feature engineering
+        if self.feature_engineering:
+            engineered_df = self.feature_engineering.extract_features(df, user_profile)
+        else:
+            engineered_df = df
+            
+        # Train Isolation Forest
+        if 'isolation_forest' in self.detectors:
+            try:
+                if_results = self.detectors['isolation_forest'].train(engineered_df)
+                results['isolation_forest'] = if_results
+            except Exception as e:
+                print(f"Warning: Failed to train Isolation Forest: {e}")
+                results['isolation_forest'] = {'error': str(e)}
+                
+        # Train Autoencoder
+        if 'autoencoder' in self.detectors:
+            try:
+                ae_results = self.detectors['autoencoder'].train(engineered_df)
+                results['autoencoder'] = ae_results
+            except Exception as e:
+                print(f"Warning: Failed to train Autoencoder: {e}")
+                results['autoencoder'] = {'error': str(e)}
+                
+        # Train graph-based detector if available
+        if 'graph' in self.detectors:
+            try:
+                graph_results = self.detectors['graph'].train(engineered_df)
+                results['graph'] = graph_results
+            except Exception as e:
+                print(f"Warning: Failed to train Graph detector: {e}")
+                results['graph'] = {'error': str(e)}
+                
+        return results
+    
+    def predict(self, transactions: List[Dict], user_profile: Dict = None, 
+                transaction_history: List[Dict] = None) -> Dict[str, Any]:
+        """
+        Generate ensemble predictions for transactions.
+        
+        Args:
+            transactions: List of transaction dictionaries
+            user_profile: User profile for personalized detection
+            transaction_history: Historical transactions for context
+            
+        Returns:
+            Combined risk assessment results
+        """
+        if not transactions:
+            return {'risk_scores': [], 'predictions': [], 'explanations': []}
+            
+        # Convert to DataFrame for ML processing
+        df = pd.DataFrame(transactions)
+        
+        # Apply feature engineering
+        if self.feature_engineering:
+            engineered_df = self.feature_engineering.extract_features(df, user_profile)
+        else:
+            engineered_df = df
+            
+        # Collect predictions from all detectors
+        detector_results = {}
+        
+        # Rule-based predictions
+        if 'rules' in self.detectors:
+            rule_results = []
+            for transaction in transactions:
+                result = self.detectors['rules'].analyze_transaction(
+                    transaction, user_profile or {}, transaction_history or []
+                )
+                rule_results.append(result)
+            detector_results['rules'] = rule_results
+            
+        # ML-based predictions
+        ml_detectors = ['isolation_forest', 'autoencoder', 'graph']
+        for detector_name in ml_detectors:
+            if detector_name in self.detectors:
+                try:
+                    detector = self.detectors[detector_name]
+                    if hasattr(detector, 'is_trained') and detector.is_trained:
+                        ml_results = detector.predict(engineered_df)
+                        detector_results[detector_name] = ml_results
+                    elif hasattr(detector, 'predict'):
+                        # For graph detector or other detectors without is_trained attribute
+                        ml_results = detector.predict(engineered_df)
+                        detector_results[detector_name] = ml_results
+                except Exception as e:
+                    print(f"Warning: Failed to get predictions from {detector_name}: {e}")
+                    
+        # Combine results
+        combined_results = self._combine_predictions(detector_results, len(transactions))
+        
+        return combined_results
+    
+    def _combine_predictions(self, detector_results: Dict, n_transactions: int) -> Dict[str, Any]:
+        """
+        Combine predictions from multiple detectors.
+        
+        Args:
+            detector_results: Results from each detector
+            n_transactions: Number of transactions
+            
+        Returns:
+            Combined predictions and explanations
+        """
+        combined_scores = np.zeros(n_transactions)
+        combined_predictions = np.zeros(n_transactions, dtype=bool)
+        explanations = []
+        
+        # Normalize and combine scores
+        for i in range(n_transactions):
+            transaction_scores = {}
+            transaction_explanations = []
+            
+            # Rule-based scores
+            if 'rules' in detector_results:
+                rule_result = detector_results['rules'][i] if i < len(detector_results['rules']) else {}
+                rule_score = rule_result.get('risk_score', 0) / 10.0  # Normalize to 0-1
+                transaction_scores['rules'] = rule_score
+                
+                if rule_result.get('is_fraud', False):
+                    transaction_explanations.append(f"Rule-based detection (score: {rule_score:.2f})")
+                    
+            # Isolation Forest scores
+            if 'isolation_forest' in detector_results:
+                if_results = detector_results['isolation_forest']
+                if 'normalized_scores' in if_results and i < len(if_results['normalized_scores']):
+                    if_score = if_results['normalized_scores'][i]
+                    transaction_scores['isolation_forest'] = if_score
+                    
+                    if if_results.get('is_anomaly', [False])[i]:
+                        transaction_explanations.append(f"Isolation Forest anomaly (score: {if_score:.2f})")
+                        
+            # Autoencoder scores
+            if 'autoencoder' in detector_results:
+                ae_results = detector_results['autoencoder']
+                if 'normalized_scores' in ae_results and i < len(ae_results['normalized_scores']):
+                    ae_score = ae_results['normalized_scores'][i]
+                    transaction_scores['autoencoder'] = ae_score
+                    
+                    if ae_results.get('is_anomaly', [False])[i]:
+                        transaction_explanations.append(f"Autoencoder anomaly (score: {ae_score:.2f})")
+                        
+            # Graph-based scores
+            if 'graph' in detector_results:
+                graph_results = detector_results['graph']
+                if 'normalized_scores' in graph_results and i < len(graph_results['normalized_scores']):
+                    graph_score = graph_results['normalized_scores'][i]
+                    transaction_scores['graph'] = graph_score
+                    
+                    if graph_results.get('is_anomaly', [False])[i]:
+                        transaction_explanations.append(f"Graph anomaly (score: {graph_score:.2f})")
+            
+            # Combine scores based on method
+            if self.combination_method == 'weighted_average':
+                weighted_score = 0
+                total_weight = 0
+                
+                for detector_name, score in transaction_scores.items():
+                    weight = self.weights.get(detector_name, 0)
+                    weighted_score += score * weight
+                    total_weight += weight
+                    
+                if total_weight > 0:
+                    combined_scores[i] = weighted_score / total_weight
+                else:
+                    combined_scores[i] = 0
+                    
+            elif self.combination_method == 'max':
+                combined_scores[i] = max(transaction_scores.values()) if transaction_scores else 0
+                
+            elif self.combination_method == 'voting':
+                # Count how many detectors flagged as anomaly
+                anomaly_votes = sum(1 for score in transaction_scores.values() if score > 0.5)
+                combined_scores[i] = anomaly_votes / len(transaction_scores) if transaction_scores else 0
+                
+            # Determine if transaction is flagged as fraudulent
+            combined_predictions[i] = combined_scores[i] > 0.5
+            
+            # Create explanation
+            if combined_predictions[i]:
+                explanation = f"Fraud detected (ensemble score: {combined_scores[i]:.2f}). " + \
+                            "; ".join(transaction_explanations) if transaction_explanations else "Multiple anomaly indicators"
+            else:
+                explanation = f"Normal transaction (ensemble score: {combined_scores[i]:.2f})"
+                
+            explanations.append(explanation)
+            
+        return {
+            'risk_scores': combined_scores.tolist(),
+            'predictions': combined_predictions.tolist(),
+            'explanations': explanations,
+            'detector_results': detector_results,
+            'combination_method': self.combination_method,
+            'weights': self.weights
+        }
+    
+    def update_weights(self, new_weights: Dict[str, float]):
+        """Update detector weights for ensemble combination."""
+        self.weights.update(new_weights)
+        
+    def get_detector_status(self) -> Dict[str, bool]:
+        """Get status of all detectors in the ensemble."""
+        status = {}
+        
+        for name, detector in self.detectors.items():
+            if hasattr(detector, 'is_trained'):
+                status[name] = detector.is_trained
+            else:
+                status[name] = True  # Assume rule-based detectors are always ready
+                
+        return status
+    
+    def get_feature_importance(self) -> Dict[str, Dict[str, float]]:
+        """Get feature importance from all ML detectors."""
+        importance = {}
+        
+        for name, detector in self.detectors.items():
+            if hasattr(detector, 'get_feature_importance'):
+                try:
+                    importance[name] = detector.get_feature_importance()
+                except Exception as e:
+                    print(f"Warning: Could not get feature importance from {name}: {e}")
+                    
+        return importance
+
+
+class GraphBasedDetector:
+    """
+    Graph-based anomaly detector that analyzes transaction networks
+    to identify suspicious patterns and entities.
+    """
+    
+    def __init__(self, min_connections=2, anomaly_threshold=0.7):
+        """
+        Initialize graph-based detector.
+        
+        Args:
+            min_connections: Minimum connections for entity analysis
+            anomaly_threshold: Threshold for anomaly classification
+        """
+        if not NETWORKX_SUPPORT:
+            raise ImportError("NetworkX is required for GraphBasedDetector")
+            
+        self.min_connections = min_connections
+        self.anomaly_threshold = anomaly_threshold
+        self.graph = None
+        self.entity_metrics = {}
+        self.is_trained = False
+        
+    def build_transaction_graph(self, df: pd.DataFrame):
+        """
+        Build a transaction network graph from transaction data.
+        
+        Args:
+            df: DataFrame with transaction data
+            
+        Returns:
+            NetworkX graph representing transaction relationships
+        """
+        G = nx.Graph()
+        
+        # Create nodes and edges based on transaction patterns
+        for idx, row in df.iterrows():
+            # Use amount and description patterns to create entity relationships
+            amount = row.get('amount', 0)
+            description = str(row.get('description', '')).lower()
+            hour = row.get('hour', 12)
+            
+            # Create entity identifiers based on patterns
+            amount_bucket = f"amount_{int(amount // 100) * 100}"  # Group by amount ranges
+            hour_bucket = f"hour_{hour}"
+            
+            # Add description-based entities
+            desc_entities = []
+            if 'atm' in description:
+                desc_entities.append('atm_transaction')
+            if any(word in description for word in ['online', 'web', 'paypal']):
+                desc_entities.append('online_transaction')
+            if any(word in description for word in ['gas', 'fuel']):
+                desc_entities.append('gas_station')
+                
+            # Create transaction node
+            tx_node = f"tx_{idx}"
+            G.add_node(tx_node, type='transaction', amount=amount, hour=hour, 
+                      description=description, idx=idx)
+            
+            # Add entity nodes and edges
+            entities = [amount_bucket, hour_bucket] + desc_entities
+            for entity in entities:
+                if not G.has_node(entity):
+                    G.add_node(entity, type='entity')
+                G.add_edge(tx_node, entity, weight=1)
+                
+        return G
+    
+    def calculate_graph_metrics(self, G: nx.Graph) -> Dict[str, Dict]:
+        """
+        Calculate various graph metrics for anomaly detection.
+        
+        Args:
+            G: Transaction network graph
+            
+        Returns:
+            Dictionary of node metrics
+        """
+        metrics = {}
+        
+        # Calculate centrality measures
+        try:
+            degree_centrality = nx.degree_centrality(G)
+            betweenness_centrality = nx.betweenness_centrality(G)
+            closeness_centrality = nx.closeness_centrality(G)
+            eigenvector_centrality = nx.eigenvector_centrality(G, max_iter=1000)
+        except:
+            # Fallback for disconnected graphs
+            degree_centrality = {node: G.degree(node) / max(1, len(G.nodes()) - 1) for node in G.nodes()}
+            betweenness_centrality = {node: 0 for node in G.nodes()}
+            closeness_centrality = {node: 0 for node in G.nodes()}
+            eigenvector_centrality = {node: 0 for node in G.nodes()}
+            
+        # Calculate clustering coefficient
+        clustering = nx.clustering(G)
+        
+        # Combine metrics
+        for node in G.nodes():
+            node_data = G.nodes[node]
+            metrics[node] = {
+                'degree_centrality': degree_centrality.get(node, 0),
+                'betweenness_centrality': betweenness_centrality.get(node, 0),
+                'closeness_centrality': closeness_centrality.get(node, 0),
+                'eigenvector_centrality': eigenvector_centrality.get(node, 0),
+                'clustering': clustering.get(node, 0),
+                'degree': G.degree(node),
+                'type': node_data.get('type', 'unknown')
+            }
+            
+        return metrics
+    
+    def train(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Train the graph-based detector.
+        
+        Args:
+            df: Training data DataFrame
+            
+        Returns:
+            Training results and metrics
+        """
+        # Build transaction graph
+        self.graph = self.build_transaction_graph(df)
+        
+        # Calculate graph metrics
+        self.entity_metrics = self.calculate_graph_metrics(self.graph)
+        
+        self.is_trained = True
+        
+        # Calculate baseline statistics
+        tx_nodes = [node for node, data in self.graph.nodes(data=True) 
+                   if data.get('type') == 'transaction']
+        
+        if tx_nodes:
+            tx_metrics = [self.entity_metrics[node] for node in tx_nodes]
+            
+            # Calculate thresholds for anomaly detection
+            centrality_scores = [m['degree_centrality'] + m['betweenness_centrality'] + 
+                               m['closeness_centrality'] + m['eigenvector_centrality'] 
+                               for m in tx_metrics]
+            
+            threshold_percentile = np.percentile(centrality_scores, 90) if centrality_scores else 0
+        else:
+            threshold_percentile = 0
+            
+        results = {
+            'n_nodes': self.graph.number_of_nodes(),
+            'n_edges': self.graph.number_of_edges(),
+            'n_transactions': len(tx_nodes),
+            'n_entities': self.graph.number_of_nodes() - len(tx_nodes),
+            'anomaly_threshold': threshold_percentile,
+            'graph_density': nx.density(self.graph) if self.graph.number_of_nodes() > 1 else 0
+        }
+        
+        return results
+    
+    def predict(self, df: pd.DataFrame) -> Dict[str, np.ndarray]:
+        """
+        Predict anomalies using graph-based analysis.
+        
+        Args:
+            df: DataFrame with transaction data
+            
+        Returns:
+            Dictionary with predictions and scores
+        """
+        if not self.is_trained:
+            raise ValueError("Model must be trained before making predictions")
+            
+        # Build graph for new data
+        test_graph = self.build_transaction_graph(df)
+        test_metrics = self.calculate_graph_metrics(test_graph)
+        
+        # Get transaction nodes
+        tx_nodes = [node for node, data in test_graph.nodes(data=True) 
+                   if data.get('type') == 'transaction']
+        
+        # Calculate anomaly scores
+        anomaly_scores = []
+        is_anomaly = []
+        
+        for node in tx_nodes:
+            if node in test_metrics:
+                metrics = test_metrics[node]
+                
+                # Combine multiple centrality measures
+                centrality_score = (
+                    metrics['degree_centrality'] + 
+                    metrics['betweenness_centrality'] + 
+                    metrics['closeness_centrality'] + 
+                    metrics['eigenvector_centrality']
+                )
+                
+                # Consider unusual patterns
+                isolation_score = 0
+                if metrics['degree'] < self.min_connections:
+                    isolation_score += 0.3
+                if metrics['clustering'] == 0:  # Not part of any triangles
+                    isolation_score += 0.2
+                    
+                # Combine scores
+                combined_score = min(1.0, centrality_score + isolation_score)
+                anomaly_scores.append(combined_score)
+                is_anomaly.append(combined_score > self.anomaly_threshold)
+            else:
+                anomaly_scores.append(0.5)  # Default score for missing nodes
+                is_anomaly.append(False)
+                
+        # Ensure we have scores for all transactions
+        while len(anomaly_scores) < len(df):
+            anomaly_scores.append(0.5)
+            is_anomaly.append(False)
+            
+        return {
+            'normalized_scores': np.array(anomaly_scores),
+            'is_anomaly': np.array(is_anomaly),
+            'predictions': np.array(is_anomaly, dtype=int),
+            'graph_metrics': test_metrics
+        }
+
+
+class SemiSupervisedLearning:
+    """
+    Semi-supervised learning component that incorporates user feedback
+    to improve fraud detection over time.
+    """
+    
+    def __init__(self, feedback_weight=0.3, update_threshold=10):
+        """
+        Initialize semi-supervised learning component.
+        
+        Args:
+            feedback_weight: Weight given to user feedback vs. original predictions
+            update_threshold: Minimum number of feedback samples before model update
+        """
+        self.feedback_weight = feedback_weight
+        self.update_threshold = update_threshold
+        self.feedback_data = []
+        self.performance_history = []
+        
+    def add_feedback(self, transaction_id: str, predicted_fraud: bool, 
+                    actual_fraud: bool, confidence: float = 1.0):
+        """
+        Add user feedback for a transaction.
+        
+        Args:
+            transaction_id: Unique identifier for the transaction
+            predicted_fraud: Model's prediction
+            actual_fraud: User's feedback (true label)
+            confidence: Confidence in the feedback (0-1)
+        """
+        feedback_entry = {
+            'transaction_id': transaction_id,
+            'predicted_fraud': predicted_fraud,
+            'actual_fraud': actual_fraud,
+            'confidence': confidence,
+            'timestamp': datetime.now(),
+            'correct_prediction': predicted_fraud == actual_fraud
+        }
+        
+        self.feedback_data.append(feedback_entry)
+        
+    def get_feedback_stats(self) -> Dict[str, Any]:
+        """Get statistics about feedback received."""
+        if not self.feedback_data:
+            return {'total_feedback': 0}
+            
+        correct_predictions = sum(1 for f in self.feedback_data if f['correct_prediction'])
+        total_feedback = len(self.feedback_data)
+        
+        false_positives = sum(1 for f in self.feedback_data 
+                             if f['predicted_fraud'] and not f['actual_fraud'])
+        false_negatives = sum(1 for f in self.feedback_data 
+                             if not f['predicted_fraud'] and f['actual_fraud'])
+        
+        return {
+            'total_feedback': total_feedback,
+            'accuracy': correct_predictions / total_feedback,
+            'false_positives': false_positives,
+            'false_negatives': false_negatives,
+            'precision': self._calculate_precision(),
+            'recall': self._calculate_recall()
+        }
+    
+    def _calculate_precision(self) -> float:
+        """Calculate precision from feedback data."""
+        predicted_positive = sum(1 for f in self.feedback_data if f['predicted_fraud'])
+        if predicted_positive == 0:
+            return 0.0
+            
+        true_positives = sum(1 for f in self.feedback_data 
+                           if f['predicted_fraud'] and f['actual_fraud'])
+        return true_positives / predicted_positive
+    
+    def _calculate_recall(self) -> float:
+        """Calculate recall from feedback data."""
+        actual_positive = sum(1 for f in self.feedback_data if f['actual_fraud'])
+        if actual_positive == 0:
+            return 0.0
+            
+        true_positives = sum(1 for f in self.feedback_data 
+                           if f['predicted_fraud'] and f['actual_fraud'])
+        return true_positives / actual_positive
+    
+    def should_update_model(self) -> bool:
+        """Determine if model should be updated based on feedback."""
+        return len(self.feedback_data) >= self.update_threshold
+    
+    def get_weight_adjustments(self) -> Dict[str, float]:
+        """
+        Calculate suggested weight adjustments based on feedback.
+        
+        Returns:
+            Dictionary of suggested weight adjustments for ensemble
+        """
+        if len(self.feedback_data) < 5:  # Need minimum feedback
+            return {}
+            
+        stats = self.get_feedback_stats()
+        adjustments = {}
+        
+        # Adjust based on false positive/negative rates
+        if stats['false_positives'] > stats['false_negatives']:
+            # Too many false positives - reduce sensitivity
+            adjustments['rules'] = -0.05
+            adjustments['isolation_forest'] = -0.03
+            adjustments['autoencoder'] = -0.03
+        elif stats['false_negatives'] > stats['false_positives']:
+            # Too many false negatives - increase sensitivity
+            adjustments['rules'] = 0.05
+            adjustments['isolation_forest'] = 0.03
+            adjustments['autoencoder'] = 0.03
+            
+        return adjustments
+    
+    def export_feedback_data(self) -> List[Dict]:
+        """Export feedback data for external analysis."""
+        return [
+            {
+                'transaction_id': f['transaction_id'],
+                'predicted_fraud': f['predicted_fraud'],
+                'actual_fraud': f['actual_fraud'],
+                'confidence': f['confidence'],
+                'timestamp': f['timestamp'].isoformat(),
+                'correct_prediction': f['correct_prediction']
+            }
+            for f in self.feedback_data
+        ]
+
+
 class EnhancedFraudDetectionSystem:
     """
     AI-enhanced fraud detection system that analyzes bank transactions
@@ -2922,12 +4188,78 @@ class FraudDetectionApp:
         """Initialize the application components."""
         self.document_processor = AIDocumentProcessor()
         self.fraud_detector = EnhancedFraudDetectionSystem()
+        
+        # Initialize ML components
+        self.feature_engineering = FeatureEngineering()
+        self.risk_ensemble = RiskEnsemble()
+        self.semi_supervised = SemiSupervisedLearning()
+        
+        # Initialize ML detectors (with graceful fallbacks)
+        self.ml_detectors = {}
+        self._initialize_ml_detectors()
+        
+        # Set up the risk ensemble
+        self._setup_risk_ensemble()
+        
         self.document_data = None
         self.transactions = []
         self.results = []
+        self.ml_results = {}
         self.user_profile = {
-            'large_amount_threshold': 2000
+            'large_amount_threshold': 2000,
+            'usual_hours': list(range(9, 18)),  # Business hours
+            'average_amount': 0  # Will be calculated from data
         }
+        
+    def _initialize_ml_detectors(self):
+        """Initialize ML detectors with error handling."""
+        try:
+            if SKLEARN_SUPPORT:
+                self.ml_detectors['isolation_forest'] = IsolationForestDetector(contamination=0.1)
+                print("✓ Isolation Forest detector initialized")
+            else:
+                print("⚠ Isolation Forest disabled (scikit-learn not available)")
+        except Exception as e:
+            print(f"⚠ Failed to initialize Isolation Forest: {e}")
+            
+        try:
+            if TENSORFLOW_SUPPORT:
+                self.ml_detectors['autoencoder'] = AutoencoderDetector(epochs=25)  # Reduced for faster training
+                print("✓ Autoencoder detector initialized")
+            else:
+                print("⚠ Autoencoder disabled (TensorFlow not available)")
+        except Exception as e:
+            print(f"⚠ Failed to initialize Autoencoder: {e}")
+            
+        try:
+            if NETWORKX_SUPPORT:
+                self.ml_detectors['graph'] = GraphBasedDetector()
+                print("✓ Graph-based detector initialized")
+            else:
+                print("⚠ Graph-based detector disabled (NetworkX not available)")
+        except Exception as e:
+            print(f"⚠ Failed to initialize Graph detector: {e}")
+            
+    def _setup_risk_ensemble(self):
+        """Set up the risk ensemble with available detectors."""
+        # Add rule-based detector
+        self.risk_ensemble.add_detector('rules', self.fraud_detector)
+        
+        # Add ML detectors
+        for name, detector in self.ml_detectors.items():
+            self.risk_ensemble.add_detector(name, detector)
+            
+        # Set feature engineering
+        self.risk_ensemble.set_feature_engineering(self.feature_engineering)
+        
+        # Adjust weights based on available detectors
+        available_detectors = ['rules'] + list(self.ml_detectors.keys())
+        if len(available_detectors) > 1:
+            weight_per_detector = 1.0 / len(available_detectors)
+            weights = {name: weight_per_detector for name in available_detectors}
+            self.risk_ensemble.update_weights(weights)
+            
+        print(f"✓ Risk ensemble configured with {len(available_detectors)} detectors")
     
     def process_document(self, file_path: str) -> Dict:
         """Process a document and extract transaction data."""
@@ -3316,17 +4648,324 @@ class FraudDetectionApp:
         return transactions
     
     def analyze_transactions(self) -> List[Dict]:
-        """Analyze transactions for fraud indicators."""
+        """Analyze transactions for fraud indicators using ML ensemble."""
         if not self.transactions:
             raise ValueError("No transactions to analyze. Process transactions first.")
         
-        # Analyze the transactions
-        self.results = self.fraud_detector.analyze_batch(
-            self.transactions, 
-            self.user_profile
-        )
+        print("\n=== Starting Fraud Detection Analysis ===")
+        
+        # Update user profile with transaction statistics
+        self._update_user_profile()
+        
+        # Step 1: Train ML models if we have sufficient data
+        if len(self.transactions) >= 10:  # Minimum data for ML training
+            print("Training ML models on transaction data...")
+            self._train_ml_models()
+        else:
+            print("⚠ Insufficient data for ML training, using rule-based detection only")
+        
+        # Step 2: Run ensemble analysis
+        print("Running ensemble fraud detection...")
+        try:
+            # Use risk ensemble for comprehensive analysis
+            ensemble_results = self.risk_ensemble.predict(
+                transactions=self.transactions,
+                user_profile=self.user_profile,
+                transaction_history=self.transactions[:-1] if len(self.transactions) > 1 else []
+            )
+            
+            # Store ML results separately
+            self.ml_results = ensemble_results
+            
+            # Convert ensemble results to legacy format for compatibility
+            self.results = self._convert_ensemble_results(ensemble_results)
+            
+        except Exception as e:
+            print(f"⚠ ML ensemble failed: {e}")
+            print("Falling back to rule-based detection...")
+            
+            # Fallback to original rule-based analysis
+            self.results = self.fraud_detector.analyze_batch(
+                self.transactions, 
+                self.user_profile
+            )
+        
+        # Step 3: Display analysis summary
+        self._display_analysis_summary()
         
         return self.results
+    
+    def _update_user_profile(self):
+        """Update user profile with transaction statistics."""
+        if not self.transactions:
+            return
+            
+        amounts = [t.get('amount', 0) for t in self.transactions if isinstance(t.get('amount'), (int, float))]
+        if amounts:
+            self.user_profile['average_amount'] = sum(amounts) / len(amounts)
+            self.user_profile['large_amount_threshold'] = max(
+                self.user_profile.get('large_amount_threshold', 2000),
+                np.percentile(amounts, 90)  # 90th percentile as threshold
+            )
+    
+    def _train_ml_models(self):
+        """Train ML models on the current transaction data."""
+        try:
+            # Convert transactions to DataFrame
+            df = pd.DataFrame(self.transactions)
+            
+            # Train the ensemble
+            training_results = self.risk_ensemble.train_ml_detectors(df, self.user_profile)
+            
+            # Display training results
+            for detector_name, results in training_results.items():
+                if 'error' not in results:
+                    if detector_name == 'isolation_forest':
+                        print(f"  ✓ Isolation Forest: {results.get('n_anomalies', 0)}/{results.get('n_samples', 0)} anomalies detected")
+                    elif detector_name == 'autoencoder':
+                        print(f"  ✓ Autoencoder: Loss {results.get('final_loss', 0):.4f}, Threshold {results.get('threshold', 0):.4f}")
+                    elif detector_name == 'graph':
+                        print(f"  ✓ Graph detector: {results.get('n_nodes', 0)} nodes, {results.get('n_edges', 0)} edges")
+                else:
+                    print(f"  ⚠ {detector_name}: {results['error']}")
+                    
+        except Exception as e:
+            print(f"⚠ ML training failed: {e}")
+    
+    def _convert_ensemble_results(self, ensemble_results: Dict) -> List[Dict]:
+        """Convert ensemble results to legacy format for compatibility."""
+        legacy_results = []
+        
+        risk_scores = ensemble_results.get('risk_scores', [])
+        predictions = ensemble_results.get('predictions', [])
+        explanations = ensemble_results.get('explanations', [])
+        
+        for i, transaction in enumerate(self.transactions):
+            if i < len(risk_scores):
+                risk_score = risk_scores[i] * 10  # Convert to 0-10 scale
+                is_fraud = predictions[i] if i < len(predictions) else False
+                explanation = explanations[i] if i < len(explanations) else "No explanation available"
+                
+                # Determine risk level
+                if risk_score >= 7:
+                    fraud_likelihood = 'High'
+                elif risk_score >= 4:
+                    fraud_likelihood = 'Medium'
+                else:
+                    fraud_likelihood = 'Low'
+                
+                result = {
+                    'transaction': transaction,
+                    'is_fraud': is_fraud,
+                    'risk_score': risk_score,
+                    'fraud_likelihood': fraud_likelihood,
+                    'explanation': explanation,
+                    'triggered_rules': self._extract_triggered_rules(explanation),
+                    'ensemble_data': {
+                        'combination_method': ensemble_results.get('combination_method'),
+                        'detector_weights': ensemble_results.get('weights', {}),
+                        'raw_score': risk_scores[i]
+                    }
+                }
+            else:
+                # Fallback for missing data
+                result = {
+                    'transaction': transaction,
+                    'is_fraud': False,
+                    'risk_score': 0,
+                    'fraud_likelihood': 'Low',
+                    'explanation': 'Normal transaction',
+                    'triggered_rules': [],
+                    'ensemble_data': {}
+                }
+                
+            legacy_results.append(result)
+            
+        return legacy_results
+    
+    def _extract_triggered_rules(self, explanation: str) -> List[dict]:
+        """Extract triggered rule names from explanation text."""
+        rules = []
+        if 'Rule-based detection' in explanation:
+            rules.append({'rule_name': 'Rule-based detection', 'rule_id': 'rules'})
+        if 'Isolation Forest' in explanation:
+            rules.append({'rule_name': 'Isolation Forest anomaly', 'rule_id': 'isolation_forest'})
+        if 'Autoencoder' in explanation:
+            rules.append({'rule_name': 'Autoencoder anomaly', 'rule_id': 'autoencoder'})
+        if 'Graph anomaly' in explanation:
+            rules.append({'rule_name': 'Graph-based anomaly', 'rule_id': 'graph'})
+        return rules
+    
+    def _display_analysis_summary(self):
+        """Display summary of analysis results."""
+        if not self.results:
+            return
+            
+        total_transactions = len(self.results)
+        fraud_transactions = sum(1 for r in self.results if r.get('is_fraud', False))
+        high_risk = sum(1 for r in self.results if r.get('risk_level') == 'High')
+        medium_risk = sum(1 for r in self.results if r.get('risk_level') == 'Medium')
+        
+        print(f"\n=== Analysis Summary ===")
+        print(f"Total transactions analyzed: {total_transactions}")
+        print(f"Potentially fraudulent: {fraud_transactions} ({fraud_transactions/total_transactions*100:.1f}%)")
+        print(f"High risk: {high_risk} ({high_risk/total_transactions*100:.1f}%)")
+        print(f"Medium risk: {medium_risk} ({medium_risk/total_transactions*100:.1f}%)")
+        
+        # Display detector status
+        detector_status = self.risk_ensemble.get_detector_status()
+        active_detectors = [name for name, status in detector_status.items() if status]
+        print(f"Active detectors: {', '.join(active_detectors)}")
+        
+        # Display feature importance if available
+        if hasattr(self, 'ml_results') and self.ml_results:
+            self._display_feature_importance()
+    
+    def _display_feature_importance(self):
+        """Display feature importance from ML models."""
+        try:
+            importance_data = self.risk_ensemble.get_feature_importance()
+            if importance_data:
+                print(f"\n=== Feature Importance ===")
+                for detector_name, features in importance_data.items():
+                    if features:
+                        print(f"{detector_name.title()}:")
+                        # Show top 5 most important features
+                        sorted_features = sorted(features.items(), key=lambda x: x[1], reverse=True)[:5]
+                        for feature, importance in sorted_features:
+                            print(f"  {feature}: {importance:.3f}")
+        except Exception as e:
+            print(f"⚠ Could not display feature importance: {e}")
+    
+    def add_feedback(self, transaction_id: str, is_fraud_actual: bool, confidence: float = 1.0):
+        """
+        Add user feedback for semi-supervised learning.
+        
+        Args:
+            transaction_id: ID of the transaction
+            is_fraud_actual: True if transaction was actually fraudulent
+            confidence: Confidence in the feedback (0-1)
+        """
+        # Find the transaction result
+        transaction_result = None
+        for result in self.results:
+            if result['transaction'].get('id') == transaction_id:
+                transaction_result = result
+                break
+                
+        if transaction_result:
+            predicted_fraud = transaction_result.get('is_fraud', False)
+            self.semi_supervised.add_feedback(
+                transaction_id=transaction_id,
+                predicted_fraud=predicted_fraud,
+                actual_fraud=is_fraud_actual,
+                confidence=confidence
+            )
+            
+            # Check if we should update model weights
+            if self.semi_supervised.should_update_model():
+                adjustments = self.semi_supervised.get_weight_adjustments()
+                if adjustments:
+                    print(f"Updating ensemble weights based on feedback: {adjustments}")
+                    self.risk_ensemble.update_weights(adjustments)
+                    
+        else:
+            print(f"⚠ Transaction {transaction_id} not found")
+    
+    def get_feedback_stats(self) -> Dict:
+        """Get feedback statistics for model performance monitoring."""
+        return self.semi_supervised.get_feedback_stats()
+    
+    def export_enhanced_results(self, output_file: str):
+        """
+        Export enhanced analysis results including ML features and ensemble data.
+        
+        Args:
+            output_file: Path to output CSV file
+        """
+        if not self.results:
+            raise ValueError("No results to export. Run analysis first.")
+            
+        # Prepare enhanced data for export
+        export_data = []
+        
+        for result in self.results:
+            transaction = result['transaction']
+            
+            # Basic transaction data
+            row = {
+                'transaction_id': transaction.get('id', ''),
+                'timestamp': transaction.get('timestamp', ''),
+                'amount': transaction.get('amount', 0),
+                'description': transaction.get('description', ''),
+                'balance': transaction.get('balance', ''),
+                
+                # Analysis results
+                'is_fraud': result.get('is_fraud', False),
+                'risk_score': result.get('risk_score', 0),
+                'risk_level': result.get('risk_level', 'Low'),
+                'explanation': result.get('explanation', ''),
+                'triggered_rules': '; '.join(rule['rule_name'] if isinstance(rule, dict) else str(rule) for rule in result.get('triggered_rules', [])),
+                
+                # Ensemble data
+                'ensemble_method': result.get('ensemble_data', {}).get('combination_method', ''),
+                'raw_ensemble_score': result.get('ensemble_data', {}).get('raw_score', 0)
+            }
+            
+            # Add detector weights
+            weights = result.get('ensemble_data', {}).get('detector_weights', {})
+            for detector, weight in weights.items():
+                row[f'{detector}_weight'] = weight
+                
+            export_data.append(row)
+            
+        # Convert to DataFrame and save
+        df = pd.DataFrame(export_data)
+        df.to_csv(output_file, index=False)
+        print(f"Enhanced results exported to: {output_file}")
+    
+    def train_on_feedback(self):
+        """Retrain models using accumulated feedback data."""
+        if not self.semi_supervised.should_update_model():
+            print("Insufficient feedback for model update")
+            return
+            
+        # Get feedback statistics
+        stats = self.get_feedback_stats()
+        print(f"Training with {stats['total_feedback']} feedback samples")
+        print(f"Current accuracy: {stats.get('accuracy', 0):.2f}")
+        
+        # Update ensemble weights based on feedback
+        adjustments = self.semi_supervised.get_weight_adjustments()
+        if adjustments:
+            current_weights = self.risk_ensemble.weights.copy()
+            for detector, adjustment in adjustments.items():
+                if detector in current_weights:
+                    current_weights[detector] = max(0, current_weights[detector] + adjustment)
+                    
+            # Normalize weights
+            total_weight = sum(current_weights.values())
+            if total_weight > 0:
+                normalized_weights = {k: v / total_weight for k, v in current_weights.items()}
+                self.risk_ensemble.update_weights(normalized_weights)
+                print(f"Updated ensemble weights: {normalized_weights}")
+                
+    def get_model_status(self) -> Dict:
+        """Get comprehensive status of all detection models."""
+        status = {
+            'detectors': self.risk_ensemble.get_detector_status(),
+            'ensemble_weights': self.risk_ensemble.weights,
+            'feedback_stats': self.get_feedback_stats(),
+            'feature_engineering': self.feature_engineering is not None,
+            'ml_models_trained': len(self.ml_detectors) > 0
+        }
+        
+        # Add ML model specific status
+        for name, detector in self.ml_detectors.items():
+            if hasattr(detector, 'is_trained'):
+                status[f'{name}_trained'] = detector.is_trained
+                
+        return status
     
     def display_results(self) -> None:
         """Display analysis results."""
@@ -3599,5 +5238,165 @@ def main():
     return 0
 
 
+def test_ml_fraud_detection():
+    """
+    Test function to validate the ML fraud detection system.
+    Creates synthetic data and tests all components.
+    """
+    print("\n=== Testing ML Fraud Detection System ===")
+    
+    try:
+        # Initialize app
+        app = FraudDetectionApp()
+        print("✓ Application initialized successfully")
+        
+        # Create synthetic transaction data for testing
+        import random
+        from datetime import datetime, timedelta
+        
+        synthetic_transactions = []
+        base_date = datetime.now() - timedelta(days=30)
+        
+        for i in range(50):  # Create 50 synthetic transactions
+            # Most transactions are normal
+            if i < 45:
+                amount = random.uniform(10, 500)
+                hour = random.randint(9, 17)  # Business hours
+                description = random.choice([
+                    "GROCERY STORE PAYMENT",
+                    "GAS STATION PURCHASE", 
+                    "RESTAURANT BILL",
+                    "ONLINE SHOPPING",
+                    "ATM WITHDRAWAL"
+                ])
+            else:
+                # 5 potentially fraudulent transactions
+                amount = random.uniform(2000, 5000)  # Large amounts
+                hour = random.randint(2, 5)  # Unusual hours
+                description = random.choice([
+                    "UNKNOWN MERCHANT",
+                    "CASH ADVANCE",
+                    "WIRE TRANSFER",
+                    "SUSPICIOUS PAYMENT"
+                ])
+                
+            transaction_date = base_date + timedelta(days=random.randint(0, 29))
+            
+            transaction = {
+                'id': f'TEST_{i:03d}',
+                'timestamp': transaction_date.strftime('%Y-%m-%d %H:%M:%S'),
+                'amount': amount,
+                'description': description,
+                'balance': 10000 - sum(t['amount'] for t in synthetic_transactions),
+                'hour': hour
+            }
+            synthetic_transactions.append(transaction)
+            
+        # Set synthetic data
+        app.transactions = synthetic_transactions
+        print(f"✓ Created {len(synthetic_transactions)} synthetic transactions")
+        
+        # Test feature engineering
+        print("\n--- Testing Feature Engineering ---")
+        df = pd.DataFrame(synthetic_transactions)
+        engineered_df = app.feature_engineering.extract_features(df, app.user_profile)
+        print(f"✓ Feature engineering: {len(engineered_df.columns)} features created")
+        
+        # Test ML detector initialization
+        print("\n--- Testing ML Detectors ---")
+        detector_status = app.get_model_status()
+        print(f"✓ Detector status: {detector_status['detectors']}")
+        
+        # Test fraud analysis
+        print("\n--- Testing Fraud Analysis ---")
+        results = app.analyze_transactions()
+        print(f"✓ Analysis completed: {len(results)} results generated")
+        
+        # Test feedback system
+        print("\n--- Testing Feedback System ---")
+        if results:
+            # Add some test feedback
+            app.add_feedback(results[0]['transaction']['id'], True, 0.9)
+            app.add_feedback(results[1]['transaction']['id'], False, 0.8)
+            feedback_stats = app.get_feedback_stats()
+            print(f"✓ Feedback system: {feedback_stats['total_feedback']} feedback entries")
+        
+        # Test export functionality
+        print("\n--- Testing Export ---")
+        test_output = "test_ml_fraud_results.csv"
+        app.export_enhanced_results(test_output)
+        print(f"✓ Enhanced export completed")
+        
+        # Summary
+        print("\n=== Test Summary ===")
+        fraud_count = sum(1 for r in results if r.get('is_fraud', False))
+        print(f"Total transactions: {len(results)}")
+        print(f"Flagged as fraud: {fraud_count}")
+        print(f"Fraud detection rate: {fraud_count/len(results)*100:.1f}%")
+        
+        # Test ensemble weights
+        ensemble_status = app.risk_ensemble.get_detector_status()
+        active_detectors = [name for name, status in ensemble_status.items() if status]
+        print(f"Active ML detectors: {', '.join(active_detectors)}")
+        
+        print("\n✅ All tests passed successfully!")
+        return True
+        
+    except Exception as e:
+        print(f"\n❌ Test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def run_validation_tests():
+    """Run comprehensive validation of the fraud detection system."""
+    print("Starting comprehensive validation tests...")
+    
+    # Test 1: Basic functionality
+    basic_test = test_ml_fraud_detection()
+    
+    # Test 2: Import validation
+    print("\n--- Testing Import Dependencies ---")
+    print(f"scikit-learn support: {SKLEARN_SUPPORT}")
+    print(f"TensorFlow support: {TENSORFLOW_SUPPORT}")
+    print(f"NetworkX support: {NETWORKX_SUPPORT}")
+    
+    # Test 3: Class instantiation
+    print("\n--- Testing Class Instantiation ---")
+    try:
+        fe = FeatureEngineering()
+        print("✓ FeatureEngineering instantiated")
+        
+        re = RiskEnsemble()
+        print("✓ RiskEnsemble instantiated")
+        
+        ssl = SemiSupervisedLearning()
+        print("✓ SemiSupervisedLearning instantiated")
+        
+        if SKLEARN_SUPPORT:
+            ifd = IsolationForestDetector()
+            print("✓ IsolationForestDetector instantiated")
+            
+        if TENSORFLOW_SUPPORT:
+            ad = AutoencoderDetector(epochs=1)  # Quick test
+            print("✓ AutoencoderDetector instantiated")
+            
+        if NETWORKX_SUPPORT:
+            gbd = GraphBasedDetector()
+            print("✓ GraphBasedDetector instantiated")
+            
+    except Exception as e:
+        print(f"❌ Class instantiation failed: {e}")
+        return False
+    
+    return basic_test
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    # Check if running in test mode
+    if len(sys.argv) > 1 and sys.argv[1] == '--test':
+        success = run_validation_tests()
+        sys.exit(0 if success else 1)
+    else:
+        sys.exit(main())
