@@ -14,10 +14,6 @@ This project provides a complete end-to-end solution for fraud detection in fina
 - **Visual Analysis**: Interactive charts and visualizations of fraud patterns
 - **Detailed Explanations**: AI-generated natural language explanations of fraud findings
 - **Web Interface**: User-friendly web application for uploading and analyzing documents
-<<<<<<< HEAD
-- **Real-time Monitoring**: Live transaction tracking and fraud detection
-=======
->>>>>>> 8537c05c (Create README.md)
 - **Comprehensive Reporting**: Detailed fraud reports available for download
 
 ## Installation
@@ -37,13 +33,8 @@ This project provides a complete end-to-end solution for fraud detection in fina
 
 1. Clone the repository:
    ```
-<<<<<<< HEAD
-   git clone <repository-url>
-   cd "AI Rule Based Fraud Detection"
-=======
    git clone https://github.com/yourusername/bank-fraud-detection.git
    cd bank-fraud-detection
->>>>>>> 8537c05c (Create README.md)
    ```
 
 2. Install required packages:
@@ -59,17 +50,9 @@ This project provides a complete end-to-end solution for fraud detection in fina
 
 - `AIRuleBasedFraudDetection.py`: Core fraud detection and document processing code
 - `app.py`: Flask web application for the user interface
-<<<<<<< HEAD
-- `realtime_transaction_tracker.py`: Real-time transaction monitoring system
-- `realtime_transactions.db`: SQLite database for transaction storage
-- `requirements.txt`: Python package dependencies
-- Sample bank statement PDFs for testing
-- `venv/`: Virtual environment directory
-=======
 - `uploads/`: Directory for uploaded documents
 - `results/`: Directory for analysis results
 - `templates/`: HTML templates for the web interface
->>>>>>> 8537c05c (Create README.md)
 
 ## Usage
 
@@ -102,6 +85,16 @@ The web interface allows you to:
 2. Set custom fraud detection parameters
 3. View detailed analysis results and visualizations
 4. Download analysis reports and charts
+
+### Real-time Transaction Monitoring
+
+To start real-time transaction monitoring:
+
+```
+python realtime_transaction_tracker.py
+```
+
+This component provides continuous monitoring of transaction patterns and real-time fraud detection capabilities.
 
 <<<<<<< HEAD
 ### Real-time Transaction Monitoring
@@ -190,12 +183,9 @@ The web application (`app.py`) provides a Flask-based user interface that integr
 ## Dependencies
 
 ### Core Dependencies
-<<<<<<< HEAD
-- numpy>=1.21.0: Numerical computing
-- pandas>=1.3.0: Data processing and analysis
-- matplotlib>=3.5.0: Data visualization
-- seaborn>=0.11.0: Statistical visualization
-- Flask>=2.3.0: Web application framework
+- pandas, numpy: Data processing
+- matplotlib: Visualization
+- Flask: Web interface
 
 ### File Processing Dependencies
 - PyPDF2>=3.0.0: PDF processing
@@ -207,27 +197,9 @@ The web application (`app.py`) provides a Flask-based user interface that integr
 - chardet>=5.0.0: Character encoding detection
 
 ### Optional Dependencies
-- openpyxl>=3.0.10: Excel file processing
-- xlrd>=2.0.1: Legacy Excel support
-- tensorflow>=2.12.0: Deep learning anomaly detection
-- pytest>=7.0.0: Testing framework
-=======
-- pandas, numpy: Data processing
-- matplotlib: Visualization
-- Flask: Web interface
-
-### File Processing Dependencies
-- PyPDF2, pdfplumber: PDF processing
-- pytesseract, PIL: Image processing and OCR
-- python-docx: Word document processing
-- python-magic: Enhanced file type detection
-- chardet: Character encoding detection
-
-### Optional Dependencies
 - BeautifulSoup: HTML parsing
 - dateutil: Advanced date parsing
 - py7zr: 7z archive support
->>>>>>> 8537c05c (Create README.md)
 
 ## Contributing
 

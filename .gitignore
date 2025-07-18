@@ -33,12 +33,22 @@ results/
 build/
 dist/
 *.egg-info/
+
 .dockerignore
 Bank Transaction Data.pdf.backup
+
+.DS_Store
+.dockerignore
+Bank Transaction Data.pdf.backup
+templates/results.html
+templates/index.html
 sample-bank-statement.pdf.backup
 run-docker.sh
 requirements-docker.txt
 examplebankstatement.pdf.backup
 Dockerfile
 docker-compose.yml
+<<<<<<< HEAD
 
+=======
+>>>>>>> ac910b8b (update code structure for improved readability)
