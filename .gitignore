@@ -35,16 +35,21 @@ dist/
 *.egg-info/
 
 .dockerignore
-Bank Transaction Data.pdf.backup
+Bank Transaction Data.pdf
 
 .DS_Store
 .dockerignore
-Bank Transaction Data.pdf.backup
+Bank Transaction Data.pdf
 templates/results.html
 templates/index.html
-sample-bank-statement.pdf.backup
+sample-bank-statement.pdf
 run-docker.sh
 requirements-docker.txt
-examplebankstatement.pdf.backup
+examplebankstatement.pdf
 Dockerfile
 docker-compose.yml
+realtime_transaction_tracker.py
+realtime_transactions.db
+sample-bank-statement.pdf.backup
+examplebankstatement.pdf.backup
+Bank Transaction Data.pdf.backup
