@@ -48,7 +48,3 @@ requirements-docker.txt
 examplebankstatement.pdf.backup
 Dockerfile
 docker-compose.yml
-<<<<<<< HEAD
-
-=======
->>>>>>> ac910b8b (update code structure for improved readability)
