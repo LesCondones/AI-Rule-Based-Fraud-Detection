@@ -628,10 +628,6 @@ class AIDocumentProcessor:
             import traceback
             traceback.print_exc()
             raise ValueError(f"Error processing PDF file: {str(e)}")
-<<<<<<< HEAD
-
-    def _process_pdfplumber_tables(self, tables):
-=======
     
     def _extract_pdf_metadata(self, pdf):
         """Extract metadata from PDF file."""
@@ -826,7 +822,6 @@ class AIDocumentProcessor:
         return rows
     
     def _process_pdfplumber_tables(self, tables, full_text=""):
->>>>>>> 4f9fd998 (Mass Update)
         """Process tables extracted by pdfplumber."""
         transactions = []
         headers = []
@@ -5475,13 +5470,12 @@ def run_validation_tests():
 
 
 if __name__ == "__main__":
-<<<<<<< HEAD
+
     sys.exit(main())
-=======
+
     # Check if running in test mode
     if len(sys.argv) > 1 and sys.argv[1] == '--test':
         success = run_validation_tests()
         sys.exit(0 if success else 1)
     else:
         sys.exit(main())
->>>>>>> 4f9fd998 (Mass Update)
