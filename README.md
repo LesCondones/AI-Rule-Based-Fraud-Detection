@@ -96,7 +96,6 @@ python realtime_transaction_tracker.py
 
 This component provides continuous monitoring of transaction patterns and real-time fraud detection capabilities.
 
-<<<<<<< HEAD
 ### Real-time Transaction Monitoring
 
 To start real-time transaction monitoring:
@@ -107,8 +106,6 @@ python realtime_transaction_tracker.py
 
 This component provides continuous monitoring of transaction patterns and real-time fraud detection capabilities.
 
-=======
->>>>>>> 8537c05c (Create README.md)
 ## Supported File Formats
 
 The system can process virtually any type of financial document including:
