@@ -96,7 +96,6 @@ python realtime_transaction_tracker.py
 
 This component provides continuous monitoring of transaction patterns and real-time fraud detection capabilities.
 
-<<<<<<< HEAD
 ### Real-time Transaction Monitoring
 
 To start real-time transaction monitoring:
